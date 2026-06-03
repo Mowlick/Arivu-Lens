@@ -3,9 +3,9 @@
   "version": "2.0.0",
   "identifier": "com.arivu.lens",
   "build": {
-    "beforeDevCommand": "",
+    "beforeDevCommand": "npm run dev --prefix ../frontend",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "",
+    "beforeBuildCommand": "npm run build --prefix ../frontend",
     "frontendDist": "../frontend/dist"
   },
   "app": {
@@ -33,7 +33,7 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "binaries/arivu-backend"
+      "binaries/compi-backend"
     ]
   },
   "plugins": {

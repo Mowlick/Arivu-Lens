@@ -80,6 +80,17 @@ a = Analysis(
         # SQLite3 (chromadb PersistentClient)
         'sqlite3',
         '_sqlite3',
+        # ChromaDB executor modules
+        'chromadb.execution.executor.local',
+        'chromadb.execution.executor.distributed',
+        'chromadb.telemetry.product.posthog',
+        'chromadb.api.segment',
+        # ChromaDB segment modules
+        'chromadb.segment.impl.metadata',
+        'chromadb.segment.impl.metadata.sqlite',
+        'chromadb.segment.impl.vector.local_hnsw',
+        'chromadb.segment.impl.vector.local_persistent_hnsw',
+        'chromadb.segment.impl.manager.local',
     ],
     hookspath=[],
     hooksconfig={},
@@ -99,7 +110,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='arivu-backend',
+    name='compi-backend',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

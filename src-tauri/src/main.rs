@@ -7,25 +7,29 @@ use std::sync::{Arc, Mutex};
 fn start_backend_sidecar(app: &AppHandle) {
     let shell = app.shell();
     
-    // Spawns the registered sidecar "arivu-backend"
-    match shell.sidecar("arivu-backend") {
+    // Spawns the registered sidecar "compi-backend"
+    match shell.sidecar("compi-backend") {
         Ok(command) => {
             let command = command
                 .env("ARIVU_PRODUCTION", "TRUE")
                 .env("PORT", "11411");
             match command.spawn() {
                 Ok((mut rx, child)) => {
-                    let child_arc = Arc::new(Mutex::new(child));
+                    let child_arc = Arc::new(Mutex::new(Some(child)));
                     
                     // Listen for exit to kill the sidecar cleanly
                     let child_exit_clone = child_arc.clone();
                     app.listen("tauri://exit", move |_| {
-                        let _ = child_exit_clone.lock().unwrap().kill();
+                        if let Some(child) = child_exit_clone.lock().unwrap().take() {
+                            let _ = child.kill();
+                        }
                     });
                     
                     let child_destroy_clone = child_arc.clone();
                     app.listen("tauri://destroyed", move |_| {
-                        let _ = child_destroy_clone.lock().unwrap().kill();
+                        if let Some(child) = child_destroy_clone.lock().unwrap().take() {
+                            let _ = child.kill();
+                        }
                     });
 
                     tauri::async_runtime::spawn(async move {
