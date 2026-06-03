@@ -77,13 +77,15 @@ class VectorStore:
             embeddings = self._get_embedding_ollama_batched(batch_texts)
             all_embeddings.extend(embeddings)
 
-        # Upsert into ChromaDB
-        self.collection.upsert(
-            ids=ids,
-            embeddings=all_embeddings,
-            documents=texts,
-            metadatas=metadatas
-        )
+        # Upsert into ChromaDB in dynamically sized batches
+        max_batch_size = self.chroma_client.get_max_batch_size()
+        for i in range(0, len(ids), max_batch_size):
+            self.collection.upsert(
+                ids=ids[i:i + max_batch_size],
+                embeddings=all_embeddings[i:i + max_batch_size],
+                documents=texts[i:i + max_batch_size],
+                metadatas=metadatas[i:i + max_batch_size]
+            )
 
         # Upsert into relational code graph store
         for idx, chunk in enumerate(chunks):
