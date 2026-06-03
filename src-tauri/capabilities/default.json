@@ -1,0 +1,20 @@
+{
+  "$schema": "../schemas/capability.json",
+  "identifier": "default",
+  "description": "Default permissions for Arivu-Lens application",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/arivu-backend",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    }
+  ]
+}

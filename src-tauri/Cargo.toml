@@ -1,0 +1,23 @@
+[package]
+name = "arivu-lens"
+version = "2.0.0"
+description = "Arivu-Lens Privacy-First Codebase Search & AI engineering assistant"
+authors = ["Arivu Team"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0.3", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.3", features = [] }
+tauri-plugin-shell = "2.0.1"
+tauri-plugin-dialog = "2.0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "z"
+strip = true
