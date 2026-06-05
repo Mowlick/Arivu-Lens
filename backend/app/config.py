@@ -45,7 +45,7 @@ class Settings:
     IGNORE_DIRECTORIES: set = {
         "node_modules", ".git", "venv", ".venv", "env", ".env", 
         "__pycache__", "build", "dist", "out", ".next", ".gradle", 
-        ".idea", ".vscode", "target", ".chromadb_store"
+        ".idea", ".vscode", "target", "target_custom", "binaries", ".chromadb_store"
     }
 
 settings = Settings()

@@ -22,11 +22,10 @@ class LLMService:
             "Analyze the provided codebase snippets carefully to answer the user's question.\n\n"
             "Guidelines:\n"
             "1. Rely primarily on the provided source snippets for your answers.\n"
-            "2. If the answer cannot be determined or inferred from the context, state clearly that "
-            "the provided codebase chunks do not contain enough information to answer, but offer "
-            "highly educated engineering suggestions if applicable.\n"
-            "3. When referencing functions, classes, or patterns, mention which source file they are located in.\n"
-            "4. Provide well-formatted code blocks with syntax highlighting (e.g. ```python, ```javascript) when suggesting changes or illustrating points.\n"
+            "2. If the answer cannot be determined or inferred from the context, STATE STRICTLY that "
+            "the provided codebase chunks do not contain enough information. DO NOT guess or hallucinate external architectures.\n"
+            "3. EXPLAIN your reasoning based ONLY on the provided codebase context.\n"
+            "4. Provide well-formatted code blocks with syntax highlighting (e.g. ```python) containing the EXACT code snippets from the context to support your answer.\n"
             "5. Keep responses structured, concise, and strictly technical.\n\n"
             "Here is the retrieved codebase context:\n"
             "==================================================\n"
@@ -35,7 +34,7 @@ class LLMService:
         )
         return prompt
 
-    async def stream_answer(self, query: str, contexts: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+    async def stream_answer(self, query: str, contexts: List[Dict[str, Any]], history: List[Dict[str, str]] = None) -> AsyncGenerator[str, None]:
         """Queries Ollama and streams back a JSON-line structure containing source files and tokens."""
         system_prompt = self._build_system_prompt(contexts)
         
@@ -54,12 +53,14 @@ class LLMService:
         # Yield sources as the first item
         yield json.dumps({"type": "sources", "sources": sources}) + "\n"
 
+        messages = [{"role": "system", "content": system_prompt}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": query})
+
         payload = {
             "model": settings.LLM_MODEL,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": query}
-            ],
+            "messages": messages,
             "stream": True,
             "options": {
                 "temperature": 0.2  # Lower temperature for accurate coding facts

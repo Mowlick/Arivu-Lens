@@ -9,6 +9,9 @@ chromadb_hidden = collect_submodules('chromadb')
 tokenizers_hidden = collect_submodules('tokenizers')
 tokenizers_datas = collect_data_files('tokenizers')
 
+# Collect tree-sitter languages DLLs
+tree_sitter_datas = collect_data_files('tree_sitter_languages')
+
 # Collect chromadb data files (migrations SQL, etc.)
 chromadb_datas = collect_data_files('chromadb')
 
@@ -16,7 +19,7 @@ a = Analysis(
     ['run.py'],
     pathex=[],
     binaries=[],
-    datas=chromadb_datas + tokenizers_datas,
+    datas=chromadb_datas + tokenizers_datas + tree_sitter_datas,
     hiddenimports=chromadb_hidden + tokenizers_hidden + [
         # Uvicorn runtime protocol handlers
         'uvicorn.protocols.http.h11_impl',

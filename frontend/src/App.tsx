@@ -2,32 +2,36 @@ import { useState, useEffect } from "react";
 import { FileTree } from "./components/FileTree";
 import { ChatArea } from "./components/ChatArea";
 import { CodeViewer } from "./components/CodeViewer";
+import { HistoryModal } from "./components/HistoryModal";
+import { FilesModal } from "./components/FilesModal";
+import { GraphModal } from "./components/GraphModal";
 import { useNativeFS } from "./hooks/useNativeFS";
 import { useNativeDragAndDrop } from "./hooks/useNativeDragAndDrop";
 import { WebLLMRouter } from "./router/webllm_router";
+import { useSession } from "./hooks/useSession";
 import { 
   ShieldCheck, 
   Lock, 
   Database, 
   Cpu, 
   Layers, 
-  Search, 
   Folder, 
   ChevronRight, 
   Paperclip, 
   Send, 
   Terminal, 
-  Sun, 
   Info, 
   Activity, 
   Compass,
   X,
   Loader2,
   CheckCircle2,
-  FolderOpen
+  FolderOpen,
+  FileText,
+  Network
 } from "lucide-react";
 
-const API_BASE = "http://localhost:11411/api";
+export const API_BASE = "http://127.0.0.1:11411/api";
 
 interface Source {
   file_path: string;
@@ -43,6 +47,7 @@ interface Message {
   content: string;
   sources?: Source[];
   routing?: "local" | "server";
+  attachedFiles?: string[];
 }
 
 function App() {
@@ -71,8 +76,47 @@ function App() {
   const [chatInput, setChatInput] = useState("");
   const [modalLoading, setModalLoading] = useState(false);
   const [modalProgress, setModalProgress] = useState<string | null>(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showFilesModal, setShowFilesModal] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showGraphModal, setShowGraphModal] = useState(false);
   const [ingestPhase, setIngestPhase] = useState<0 | 1 | 2 | 3>(0); // 0=idle, 1=AST, 2=Graph, 3=Vector
   const [activeTab, setActiveTab] = useState<"path" | "zip">("path");
+  const [centerTab, setCenterTab] = useState<"chat" | "code">("chat");
+
+  const [showMentionPopover, setShowMentionPopover] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
+
+  const { sessionId, sessionsList, fetchSessions, createNewSession, loadSession, fetchSessionDetails } = useSession(workspacePath);
+
+  useEffect(() => {
+    document.documentElement.classList.add('dark');
+  }, []);
+
+  useEffect(() => {
+    if (workspacePath) {
+      fetchSessions();
+    }
+  }, [workspacePath, fetchSessions]);
+
+  useEffect(() => {
+    if (sessionId) {
+      fetchSessionDetails(sessionId).then(session => {
+        if (session && session.chat_history) {
+          setMessages(session.chat_history.map((m: any, i: number) => ({
+            id: Date.now().toString() + i,
+            role: m.role,
+            content: m.content,
+            sources: m.sources,
+            routing: "server"
+          })));
+        }
+      });
+    } else if (!sessionId && messages.length > 0) {
+      setMessages([]);
+    }
+  }, [sessionId, fetchSessionDetails]);
   
   // Infrastructure Diagnostics State
   const [health, setHealth] = useState<{
@@ -80,7 +124,59 @@ function App() {
     llm_model: string;
     embedding_model: string;
   } | null>(null);
+  
+  const [chatStarters, setChatStarters] = useState<{title: string, desc: string}[]>([]);
 
+  useEffect(() => {
+    if (files.length > 0 && chatStarters.length === 0) {
+      const fetchStarters = async () => {
+        try {
+          const res = await fetch(`${API_BASE}/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: "Based on the codebase files, suggest exactly 4 short questions a developer might ask about its architecture, modules, or APIs. Return ONLY a valid JSON array of objects with 'title' and 'desc'. Example: [{\"title\": \"Question\", \"desc\": \"Context\"}]",
+              n_results: 10,
+              history: [],
+              use_graph: false,
+              session_id: null,
+              attached_files: []
+            })
+          });
+          if (!res.ok) return;
+          const reader = res.body?.getReader();
+          if (!reader) return;
+          const decoder = new TextDecoder();
+          let fullText = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split("\n");
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              try {
+                const parsed = JSON.parse(line);
+                if (parsed.type === "content") {
+                  fullText += parsed.text || "";
+                }
+              } catch (e) {}
+            }
+          }
+          const match = fullText.match(/\[[\s\S]*\]/);
+          if (match) {
+            const arr = JSON.parse(match[0]);
+            if (Array.isArray(arr) && arr.length >= 4) {
+              setChatStarters(arr.slice(0, 4));
+            }
+          }
+        } catch (e) {
+          console.error("Starters error", e);
+        }
+      };
+      fetchStarters();
+    }
+  }, [files, chatStarters.length]);
   const fetchHealth = async () => {
     try {
       const res = await fetch(`${API_BASE}/health`);
@@ -95,26 +191,27 @@ function App() {
     }
   };
 
-  const refreshFiles = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/files`);
-      if (res.ok) {
-        const data = await res.json();
-        setFiles(data.files || []);
-      }
-    } catch (err) {
-      console.error("Failed to fetch indexed files:", err);
-    }
-  };
+
 
   const checkWorkspace = async () => {
     try {
-      const res = await fetch(`${API_BASE}/health`);
+      const res = await fetch(`${API_BASE}/workspace/restore`);
       if (res.ok) {
         const data = await res.json();
-        if (data.active_workspace) {
-          setWorkspacePath(data.active_workspace);
-          refreshFiles();
+        if (data.path) {
+          setWorkspacePath(data.path);
+          setFiles(data.files || []);
+          setChunksCount(data.chunks_count || 0);
+          setWorkspaceSizeKb(Math.round((data.size_bytes || 0) / 1024));
+          if (data.chat_history && data.chat_history.length > 0) {
+            setMessages(data.chat_history.map((m: any, i: number) => ({
+              id: Date.now().toString() + i,
+              role: m.role,
+              content: m.content,
+              routing: "server",
+              sources: []
+            })));
+          }
         }
       }
     } catch {}
@@ -144,6 +241,21 @@ function App() {
     const interval = setInterval(fetchHealth, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  // Auto-sync conversation history
+  useEffect(() => {
+    if (!workspacePath || messages.length === 0) return;
+    const syncInterval = setInterval(async () => {
+      try {
+        await fetch(`${API_BASE}/workspace/sync`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_history: messages.map(m => ({ role: m.role, content: m.content })) })
+        });
+      } catch (e) {}
+    }, 30000);
+    return () => clearInterval(syncInterval);
+  }, [workspacePath, messages]);
 
   const ingestDirectory = async (path: string) => {
     setDirPath(path);
@@ -315,12 +427,14 @@ function App() {
     }
   };
 
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, attachedFiles: string[] = []) => {
+    setCenterTab("chat");
     const userMessageId = `user_${Date.now()}`;
     const userMessage: Message = {
       id: userMessageId,
       role: "user",
-      content: text
+      content: text,
+      attachedFiles: attachedFiles
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -338,48 +452,50 @@ function App() {
       }
     }
 
-    setMessages(prev => [...prev, {
-      id: assistantMessageId,
-      role: "assistant",
-      content: "",
-      sources: [],
-      routing: route === "local_chat" ? "local" : "server"
-    }]);
-
     if (route === "local_chat" && webLlmRouter) {
       try {
         let accumulatedText = "";
         await webLlmRouter.generateInstantChat(text, (token) => {
           accumulatedText += token;
-          setMessages(prev =>
-            prev.map(m =>
-              m.id === assistantMessageId
-                ? { ...m, content: accumulatedText }
-                : m
-            )
-          );
         });
+        setMessages(prev => [...prev, {
+          id: assistantMessageId,
+          role: "assistant",
+          content: accumulatedText,
+          sources: [],
+          routing: "local"
+        }]);
         setIsLoading(false);
         return;
       } catch (err) {
         console.warn("WebLLM local generation failed, falling back to server RAG:", err);
-        // If local execution crashes mid-way, update the indicator to show server fallback
-        setMessages(prev =>
-          prev.map(m =>
-            m.id === assistantMessageId
-              ? { ...m, routing: "server" }
-              : m
-          )
-        );
+        setMessages(prev => [...prev, {
+          id: assistantMessageId,
+          role: "assistant",
+          content: "*Local inference crashed mid-way. Please try again.*",
+          sources: [],
+          routing: "server"
+        }]);
       }
     }
 
     // Server-side Graph RAG Pipeline
     try {
+      const recentMessages = messages.slice(-10).map(m => ({ role: m.role, content: m.content }));
+      
       const res = await fetch(`${API_BASE}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: text, n_results: 5 }),
+        body: JSON.stringify({ 
+          query: text, 
+          n_results: 5, 
+          history: recentMessages,
+          use_files: false,
+          use_search: false,
+          use_graph: false,
+          session_id: sessionId,
+          attached_files: attachedFiles
+        }),
       });
 
       if (!res.ok) {
@@ -412,51 +528,75 @@ function App() {
             const parsed = JSON.parse(trimmed);
             if (parsed.type === "sources") {
               retrievedSources = parsed.sources || [];
-              setMessages(prev =>
-                prev.map(m =>
-                  m.id === assistantMessageId
-                    ? { ...m, sources: retrievedSources }
-                    : m
-                )
-              );
             } else if (parsed.type === "content") {
               accumulatedText += parsed.text;
-              setMessages(prev =>
-                prev.map(m =>
-                  m.id === assistantMessageId
-                    ? { ...m, content: accumulatedText }
-                    : m
-                )
-              );
             }
           } catch (e) {
             // Keep parsing lines if one fails
           }
         }
       }
+      setMessages(prev => [...prev, {
+        id: assistantMessageId,
+        role: "assistant",
+        content: accumulatedText,
+        sources: retrievedSources,
+        routing: "server"
+      }]);
     } catch (err: any) {
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === assistantMessageId
-            ? { ...m, content: `*Inference error: ${err.message || "Failed to obtain response from Ollama Qwen model."}*` }
-            : m
-        )
-      );
+      setMessages(prev => [...prev, {
+        id: assistantMessageId,
+        role: "assistant",
+        content: `*Inference error: ${err.message || "Failed to obtain response from Ollama Qwen model."}*`,
+        sources: [],
+        routing: "server"
+      }]);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex h-screen w-screen bg-[#030306] text-gray-200 overflow-hidden font-sans relative">
+    <div className="flex h-screen w-screen dark:bg-[#030306] bg-gray-50 dark:text-gray-200 text-gray-800 overflow-hidden font-sans relative transition-colors duration-300">
+      {/* Modals & Overlays */}
+      {showHistoryModal && <HistoryModal onClose={() => setShowHistoryModal(false)} />}
+      
+      {showFilesModal && (
+        <FilesModal 
+          files={files}
+          onClose={() => setShowFilesModal(false)}
+          onSelectFile={(f) => {
+            setChatInput((prev) => prev + (prev.endsWith(" ") || prev === "" ? "" : " ") + `@${f} `);
+          }}
+        />
+      )}
+      
+      {showSearchModal && (
+        <FilesModal 
+          files={files}
+          onClose={() => setShowSearchModal(false)}
+          onSelectFile={(f) => {
+            setActiveFile(f);
+            setCenterTab("code");
+          }}
+        />
+      )}
+      
+      {showGraphModal && (
+        <GraphModal 
+          apiBase={API_BASE}
+          onClose={() => setShowGraphModal(false)}
+        />
+      )}
+
       {isDragging && (
-        <div className="absolute inset-0 bg-[#030306]/85 backdrop-blur-md z-50 flex items-center justify-center p-8 pointer-events-none">
-          <div className="w-full h-full border-2 border-dashed border-arivuEmerald/40 rounded-3xl bg-[#0a0b10]/60 flex flex-col items-center justify-center gap-4 animate-pulse">
-            <div className="w-20 h-20 rounded-2xl border border-arivuEmerald/50 bg-[#0c0d12]/95 flex items-center justify-center text-arivuEmerald shadow-emeraldGlow glow-glow">
+        <div className="absolute inset-0 dark:bg-[#030306] bg-gray-50/85 backdrop-blur-md z-50 flex items-center justify-center p-8 pointer-events-none">
+          <div className="w-full h-full border-2 border-dashed border-arivuEmerald/40 rounded-3xl dark:bg-[#0a0b10] bg-white/60 flex flex-col items-center justify-center gap-4 animate-pulse">
+            <div className="w-20 h-20 rounded-2xl border border-arivuEmerald/50 dark:bg-[#0c0d12] bg-gray-100/95 flex items-center justify-center text-arivuEmerald shadow-emeraldGlow glow-glow">
               <FolderOpen className="w-10 h-10 stroke-[1.5]" />
             </div>
             <div className="space-y-1 text-center">
-              <h3 className="text-xl font-bold tracking-wide text-gray-200">Drop to Index Codebase</h3>
+              <h3 className="text-xl font-bold tracking-wide dark:text-gray-200 text-gray-800">Drop to Index Codebase</h3>
               <p className="text-xs font-mono text-gray-500 max-w-sm leading-relaxed">
                 Release your repository folder to automatically parse the syntax structures and build the relational Code Graph RAG database.
               </p>
@@ -466,23 +606,23 @@ function App() {
       )}
       
       {/* ==================== 1. LEFT COLUMN ==================== */}
-      <aside className="w-80 shrink-0 border-r border-white/[0.04] bg-[#07080b]/90 flex flex-col h-full z-10">
+      <aside className="w-80 shrink-0 dark:bg-[#07080b] bg-white/90 flex flex-col h-full z-10">
         
         {/* Card 1: Ingest Codebase */}
-        <div className="p-5 border-b border-white/[0.04] flex flex-col gap-4">
+        <div className="p-5 flex flex-col gap-4">
           <h3 className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Ingest Codebase</h3>
           
           {workspacePath ? (
-            <div className="p-4 rounded-xl border border-white/[0.03] bg-white/[0.01] flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-arivuEmerald/10 flex items-center justify-center text-arivuEmerald">
+            <div className="p-4 rounded-xl bg-white/[0.01] flex flex-col gap-3">
+              <div className="flex items-center gap-2 group relative">
+                <div className="w-8 h-8 rounded-lg dark:bg-arivuEmerald/10 bg-arivuEmerald/20 flex items-center justify-center text-arivuEmerald">
                   <FolderOpen className="w-4 h-4" />
                 </div>
                 <div className="overflow-hidden">
-                  <h4 className="text-xs font-semibold text-gray-200 truncate" title={workspacePath}>
+                  <h4 className="text-xs font-semibold dark:text-gray-200 text-gray-800 truncate" title={workspacePath}>
                     {workspacePath.split(/[/\\]/).pop()}
                   </h4>
-                  <p className="text-[9px] font-mono text-gray-500 truncate" title={workspacePath}>
+                  <p className="text-[9px] font-mono dark:text-gray-400 text-gray-500 truncate group-hover:text-clip" title={workspacePath}>
                     {workspacePath}
                   </p>
                 </div>
@@ -491,7 +631,7 @@ function App() {
               <div className="flex gap-2">
                 <button
                   onClick={isTauri ? handleNativeFolderSelect : () => setShowIngestModal(true)}
-                  className="flex-1 text-[10px] font-mono border border-white/5 hover:border-arivuIndigo/40 hover:bg-white/5 rounded-lg py-1.5 transition text-gray-400"
+                  className="flex-1 text-[10px] font-mono border dark:border-white/5 border-gray-200 hover:border-arivuIndigo/40 hover:bg-white/5 rounded-lg py-1.5 transition dark:text-gray-400 text-gray-600"
                 >
                   Change Path
                 </button>
@@ -504,12 +644,12 @@ function App() {
               </div>
             </div>
           ) : (
-            <div className="p-5 rounded-xl border border-white/[0.03] bg-white/[0.01] text-center flex flex-col items-center gap-3">
-              <div className="w-12 h-12 rounded-full border border-dashed border-white/10 flex items-center justify-center text-gray-600 mb-1">
+            <div className="p-5 rounded-xl border dark:border-white/5 border-gray-200 bg-white/[0.01] text-center flex flex-col items-center gap-3">
+              <div className="w-12 h-12 rounded-full border border-dashed dark:border-white/10 border-gray-200 flex items-center justify-center text-gray-600 mb-1">
                 <Folder className="w-5 h-5 stroke-[1.5]" />
               </div>
               <div className="space-y-1">
-                <h4 className="text-xs font-semibold text-gray-300">No codebase loaded</h4>
+                <h4 className="text-xs font-semibold dark:text-gray-300 text-gray-700">No codebase loaded</h4>
                 <p className="text-[10px] text-gray-500 leading-relaxed">
                   Select a local directory or upload a .zip file to get started.
                 </p>
@@ -531,17 +671,20 @@ function App() {
         <div className="flex-1 flex flex-col min-h-0 p-5">
           <h3 className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-4">File Explorer</h3>
           
-          <div className="flex-1 min-h-0 border border-white/[0.03] bg-white/[0.01] rounded-xl overflow-hidden flex flex-col">
+          <div className="flex-1 min-h-0 bg-white/[0.01] rounded-xl overflow-hidden flex flex-col">
             {files.length > 0 ? (
               <FileTree
                 files={files}
                 activeFile={activeFile}
-                onSelectFile={(path) => setActiveFile(path)}
+                onSelectFile={(path) => {
+                  setActiveFile(path);
+                  setCenterTab("code");
+                }}
               />
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-2">
                 <Folder className="w-8 h-8 text-gray-800 stroke-[1.2] mb-1" />
-                <h4 className="text-xs font-medium text-gray-400">No files to display</h4>
+                <h4 className="text-xs font-medium dark:text-gray-400 text-gray-600">No files to display</h4>
                 <p className="text-[10px] text-gray-600 leading-relaxed font-mono">
                   Ingest a codebase to explore its structure here.
                 </p>
@@ -551,31 +694,31 @@ function App() {
         </div>
 
         {/* Stats footer row */}
-        <div className="px-5 pb-3 pt-1 grid grid-cols-3 gap-2.5">
-          <div className="p-2.5 rounded-xl border border-white/[0.03] bg-[#0c0d12]/50 text-center font-mono">
-            <div className="text-[9px] text-gray-500">Files</div>
-            <div className="text-xs font-bold text-gray-300 mt-1">{files.length > 0 ? files.length : "—"}</div>
-          </div>
-          <div className="p-2.5 rounded-xl border border-white/[0.03] bg-[#0c0d12]/50 text-center font-mono">
-            <div className="text-[9px] text-gray-500">Chunks</div>
-            <div className="text-xs font-bold text-gray-300 mt-1">{chunksCount > 0 ? chunksCount : "—"}</div>
-          </div>
-          <div className="p-2.5 rounded-xl border border-white/[0.03] bg-[#0c0d12]/50 text-center font-mono">
-            <div className="text-[9px] text-gray-500">Size</div>
-            <div className="text-xs font-bold text-gray-300 mt-1">
-              {workspaceSizeKb > 0 
-                ? workspaceSizeKb > 1024 
-                  ? `${(workspaceSizeKb / 1024).toFixed(1)} MB` 
-                  : `${workspaceSizeKb} KB` 
-                : "—"
-              }
+        {files.length > 0 && (
+          <div className="px-5 pb-4 grid grid-cols-3 gap-2.5 pt-4">
+            <div className="p-2.5 rounded-xl border dark:border-white/5 border-gray-200 dark:bg-[#0c0d12]/80 bg-gray-100/80 text-center font-mono shadow-sm">
+              <div className="text-[9px] dark:text-gray-500 text-gray-600">Files</div>
+              <div className="text-xs font-bold dark:text-gray-300 text-gray-700 mt-1">{files.length}</div>
+            </div>
+            <div className="p-2.5 rounded-xl border dark:border-white/5 border-gray-200 dark:bg-[#0c0d12]/80 bg-gray-100/80 text-center font-mono shadow-sm">
+              <div className="text-[9px] dark:text-gray-500 text-gray-600">Chunks</div>
+              <div className="text-xs font-bold dark:text-gray-300 text-gray-700 mt-1">{chunksCount}</div>
+            </div>
+            <div className="p-2.5 rounded-xl border dark:border-white/5 border-gray-200 dark:bg-[#0c0d12]/80 bg-gray-100/80 text-center font-mono shadow-sm">
+              <div className="text-[9px] dark:text-gray-500 text-gray-600">Size</div>
+              <div className="text-xs font-bold dark:text-gray-300 text-gray-700 mt-1">
+                {workspaceSizeKb > 1024 ? `${(workspaceSizeKb / 1024).toFixed(1)} MB` : `${workspaceSizeKb} KB`}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Bottom bar button */}
         <div className="p-5 pt-0">
-          <button className="w-full flex items-center justify-between px-4 py-2.5 border border-white/[0.03] hover:border-white/10 bg-[#0c0d12]/40 rounded-xl text-[10px] font-mono text-gray-500 hover:text-gray-300 transition">
+          <button 
+            onClick={() => setShowHistoryModal(true)}
+            className="w-full flex items-center justify-between px-4 py-2.5 border dark:border-white/5 border-gray-200 hover:dark:border-white/10 border-gray-200 dark:bg-[#0c0d12] bg-gray-100/40 rounded-xl text-[10px] font-mono text-gray-500 hover:dark:text-gray-300 text-gray-700 transition"
+          >
             <span className="flex items-center gap-1.5"><Activity className="w-3.5 h-3.5 text-arivuIndigo" /> View Ingestion History</span>
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
@@ -583,17 +726,17 @@ function App() {
       </aside>
 
       {/* ==================== 2. CENTER Q&A COLUMN ==================== */}
-      <main className="flex-1 flex flex-col h-full border-r border-white/[0.04] relative">
+      <main className="flex-1 flex flex-col h-full relative">
         
         {/* App Header Banner */}
-        <header className="px-6 py-4 border-b border-white/[0.04] bg-[#07080b]/90 flex items-center justify-between backdrop-blur-md">
+        <header className="px-6 py-4 dark:bg-[#07080b] bg-white/90 flex items-center justify-between backdrop-blur-md">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-arivuIndigo to-arivuEmerald flex items-center justify-center text-white glow-glow">
               <ShieldCheck className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-sm font-extrabold tracking-wider uppercase text-gray-100">
+                <h1 className="text-sm font-extrabold tracking-wider uppercase dark:text-gray-100 text-gray-900">
                   Arivu-Lens
                 </h1>
               </div>
@@ -605,30 +748,25 @@ function App() {
           
           <div className="flex items-center gap-4">
             {/* Status dot */}
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full border border-white/[0.03] bg-[#0c0d12] text-[10px] font-mono">
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full border dark:border-white/5 border-gray-200 dark:bg-[#0c0d12] bg-gray-100 text-[10px] font-mono">
               <span className={`w-1.5 h-1.5 rounded-full ${health?.ollama_connection === "online" ? "bg-arivuEmerald animate-pulse" : "bg-red-500"}`}></span>
-              <span className="text-gray-400">Ollama (local)</span>
+              <span className="dark:text-gray-400 text-gray-600">Ollama</span>
               <span className="text-gray-600">|</span>
               <span className="text-arivuEmerald-light font-semibold">
-                {health?.ollama_connection === "online" ? "Connected" : "Disconnected"}
+                {health?.ollama_connection === "online" ? "Online" : "Offline"}
               </span>
             </div>
 
             {/* Tauri and WebGPU badge */}
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full border border-white/[0.03] bg-[#0c0d12] text-[10px] font-mono">
-              <span className={`w-1.5 h-1.5 rounded-full ${isTauri ? "bg-arivuIndigo animate-pulse" : "bg-gray-500"}`}></span>
-              <span className="text-gray-400">{isTauri ? "Tauri App" : "Web Client"}</span>
-              <span className="text-gray-600">|</span>
-              <span className={`font-semibold ${routerState === "ready" ? "text-arivuEmerald-light" : "text-gray-500"}`}>
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full border dark:border-white/5 border-gray-200 dark:bg-[#0c0d12] bg-gray-100 text-[10px] font-mono">
+              <span className={`w-1.5 h-1.5 rounded-full ${routerState === "ready" ? "bg-arivuEmerald animate-pulse" : "bg-gray-500"}`}></span>
+              <span className={`font-semibold ${routerState === "ready" ? "text-arivuEmerald-light" : "dark:text-gray-400 text-gray-600"}`}>
                 {routerState === "ready" ? "WebGPU Active" : "WebGPU Standby"}
               </span>
             </div>
             
             {/* Action buttons */}
-            <button className="p-1.5 text-gray-500 hover:text-gray-300 transition hover:bg-white/5 rounded-lg border border-white/[0.03]">
-              <Sun className="w-4 h-4" />
-            </button>
-            <div className="w-7 h-7 rounded-full border border-white/10 bg-[#0c0d12] text-xs font-extrabold flex items-center justify-center text-arivuIndigo select-none">
+            <div className="w-7 h-7 rounded-full border dark:border-white/10 border-gray-200 dark:bg-[#0c0d12] bg-gray-100 text-xs font-extrabold flex items-center justify-center text-arivuIndigo select-none">
               K
             </div>
           </div>
@@ -636,251 +774,336 @@ function App() {
 
         {/* Code Q&A Viewport */}
         <div className="flex-1 overflow-hidden relative flex flex-col">
+          {files.length > 0 && (
+            <div className="flex items-center gap-4 px-6 dark:bg-[#07080b] bg-white/90 text-xs font-mono">
+              <button 
+                onClick={() => setCenterTab("chat")}
+                className={`py-3 px-2 border-b-2 transition ${centerTab === "chat" ? "border-arivuIndigo text-arivuIndigo" : "border-transparent text-gray-500 hover:dark:text-gray-300 text-gray-700"}`}
+              >
+                Chat
+              </button>
+              <button 
+                onClick={() => setCenterTab("code")}
+                className={`py-3 px-2 border-b-2 transition ${centerTab === "code" ? "border-arivuEmerald text-arivuEmerald" : "border-transparent text-gray-500 hover:dark:text-gray-300 text-gray-700"}`}
+              >
+                Code Viewer
+              </button>
+            </div>
+          )}
+          
           {files.length === 0 ? (
             /* Orbital Empty State */
             <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center p-8 text-center relative">
-              
-              {/* Circular Orbit layout */}
               <div className="relative w-80 h-80 mb-6 flex items-center justify-center select-none">
-                {/* Rings */}
                 <div className="orbit-ring w-[280px] h-[160px] opacity-20" style={{ animationDuration: '40s' }}></div>
                 <div className="orbit-ring w-[220px] h-[120px] opacity-40" style={{ animationDuration: '30s', animationDirection: 'reverse' }}></div>
                 <div className="orbit-ring w-[160px] h-[90px] opacity-60" style={{ animationDuration: '20s' }}></div>
-                
-                {/* Orbiting Icons */}
-                <div className="absolute top-[18%] left-[20%] w-7 h-7 rounded-lg border border-white/5 bg-[#0b0c10]/90 flex items-center justify-center text-arivuIndigo/70 text-xs font-mono glow-violet">
+                <div className="absolute top-[18%] left-[20%] w-7 h-7 rounded-lg border dark:border-white/5 border-gray-200 dark:bg-[#0b0c10] bg-white/90 flex items-center justify-center text-arivuIndigo/70 text-xs font-mono glow-violet">
                   &lt;/&gt;
                 </div>
-                <div className="absolute top-[18%] right-[20%] w-7 h-7 rounded-lg border border-white/5 bg-[#0b0c10]/90 flex items-center justify-center text-arivuEmerald-light/70 text-xs font-mono glow-glow">
+                <div className="absolute top-[18%] right-[20%] w-7 h-7 rounded-lg border dark:border-white/5 border-gray-200 dark:bg-[#0b0c10] bg-white/90 flex items-center justify-center text-arivuEmerald-light/70 text-xs font-mono glow-glow">
                   &gt;_
                 </div>
-                <div className="absolute bottom-[10%] left-[45%] w-7 h-7 rounded-lg border border-white/5 bg-[#0b0c10]/90 flex items-center justify-center text-gray-500 text-xs">
+                <div className="absolute bottom-[10%] left-[45%] w-7 h-7 rounded-lg border dark:border-white/5 border-gray-200 dark:bg-[#0b0c10] bg-white/90 flex items-center justify-center text-gray-500 text-xs">
                   <Terminal className="w-3.5 h-3.5" />
                 </div>
-                
-                {/* Central Neon Folder */}
-                <div className="w-20 h-20 rounded-2xl border border-arivuEmerald bg-[#0a0b10]/90 flex items-center justify-center text-arivuEmerald shadow-emeraldGlow z-10 glow-glow">
-                  <Folder className="w-8 h-8 stroke-[1.5]" />
+                <div className="w-24 h-24 rounded-3xl border dark:border-white/5 border-gray-200 dark:bg-[#0a0b10] bg-white/90 flex items-center justify-center shadow-emeraldGlow z-10 glow-glow relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-arivuEmerald/20 to-arivuIndigo/20 opacity-50"></div>
+                  <span className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-arivuEmerald to-arivuIndigo-light z-10 font-sans tracking-tighter">A</span>
                 </div>
               </div>
-
-              {/* Central text block */}
               <div className="max-w-md space-y-3 z-10">
-                <h2 className="text-xl font-bold text-gray-100 tracking-wide">
+                <h2 className="text-3xl font-bold dark:text-gray-100 text-gray-900 tracking-tight">
                   Your Codebase, Your Intelligence.
                 </h2>
-                <h3 className="text-sm font-extrabold text-arivuEmerald-light tracking-wider font-mono uppercase">
-                  100% Local. 100% Private.
-                </h3>
-                <p className="text-xs text-gray-500 leading-relaxed font-mono">
+                <div className="text-arivuEmerald-light font-black tracking-widest text-sm uppercase py-2">
+                  100% LOCAL. 100% PRIVATE.
+                </div>
+                <p className="text-[13px] dark:text-gray-400 text-gray-500 leading-relaxed font-mono px-4">
                   Arivu-Lens analyzes your codebase locally to help you understand, debug, and optimize your projects — all without sending a single byte of code over the internet.
                 </p>
-                
                 <div className="pt-4">
                   <button
                     onClick={isTauri ? handleNativeFolderSelect : () => setShowIngestModal(true)}
-                    className="inline-flex items-center gap-2 border border-white/[0.04] hover:border-arivuIndigo/50 bg-[#0c0d12]/60 hover:bg-[#0c0d12] text-xs font-mono text-gray-400 hover:text-gray-200 px-4 py-2.5 rounded-xl transition shadow-indigoGlow"
+                    className="inline-flex items-center gap-2 border dark:border-white/5 border-gray-200 hover:border-arivuIndigo/50 dark:bg-[#0c0d12] bg-gray-100/60 hover:dark:bg-[#0c0d12] bg-gray-100 text-xs font-mono dark:text-gray-400 text-gray-600 hover:dark:text-gray-200 text-gray-800 px-4 py-2.5 rounded-xl transition shadow-indigoGlow"
                   >
-                    <span>← {isTauri ? "Select a codebase directory (Native)" : "Ingest a codebase from the left to begin"}</span>
+                    <span>{isTauri ? "Select a codebase directory (Native)" : "Ingest a codebase to begin"}</span>
                   </button>
                 </div>
               </div>
             </div>
           ) : (
-            /* Chat window loaded */
-            <div className="flex-1 overflow-hidden flex flex-col">
-              <ChatArea
-                messages={messages}
-                isLoading={isLoading}
-                onSendMessage={handleSendMessage}
-                onSelectSourceFile={(path) => setActiveFile(path)}
-              />
+            <div className="flex-1 overflow-hidden flex flex-col relative">
+              {centerTab === "chat" ? (
+                <ChatArea
+                  messages={messages}
+                  isLoading={isLoading}
+                  chatStarters={chatStarters}
+                  onSendMessage={handleSendMessage}
+                  onSelectSourceFile={(path) => {
+                    setActiveFile(path);
+                    setCenterTab("code");
+                  }}
+                  sessionsList={sessionsList}
+                  currentSessionId={sessionId}
+                  onNewChat={() => {
+                    setMessages([]);
+                    createNewSession();
+                  }}
+                  onSelectSession={(id) => loadSession(id)}
+                />
+              ) : (
+                <CodeViewer
+                  filePath={activeFile}
+                  isDarkMode={true}
+                  onClose={() => setCenterTab("chat")}
+                />
+              )}
             </div>
           )}
         </div>
 
-        {/* Input bar bottom (Only shown when files are loaded to match Q&A) */}
+        {/* Input bar bottom */}
         {files.length > 0 && (
-          <div className="p-5 border-t border-white/[0.04] bg-[#07080b]/80 backdrop-blur-md relative z-10">
-            <div className="max-w-3xl mx-auto border border-white/[0.04] hover:border-white/10 rounded-2xl bg-[#0b0c10] p-3 flex flex-col gap-3 focus-within:border-arivuIndigo/40 transition shadow-combinedGlow">
-              <textarea
-                rows={1}
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Ask anything about your codebase..."
-                disabled={isLoading}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    if (!chatInput.trim() || isLoading) return;
-                    handleSendMessage(chatInput.trim());
-                    setChatInput("");
-                  }
-                }}
-                className="w-full text-sm bg-transparent border-0 focus:outline-none focus:ring-0 text-gray-200 resize-none placeholder:text-gray-700 min-h-[24px] max-h-36 font-sans px-1"
-              />
+          <div className="p-5 dark:bg-[#07080b]/80 bg-white/80 backdrop-blur-md relative z-10">
+            <div className="max-w-3xl mx-auto border dark:border-white/5 border-gray-200 hover:dark:border-white/10 rounded-2xl dark:bg-[#0b0c10] bg-white shadow-combinedGlow p-3 flex flex-col gap-3 focus-within:border-arivuIndigo/40 transition">
+              {attachedFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-1 px-1">
+                  {attachedFiles.map(file => (
+                    <span key={file} className="bg-indigo-500/20 text-indigo-300 text-[11px] px-2 py-1 rounded-md flex items-center gap-1 border border-indigo-500/30 font-mono">
+                      <FileText className="w-3 h-3" /> {file.split(/[/\\]/).pop()} 
+                      <button onClick={() => setAttachedFiles(prev => prev.filter(f => f !== file))} className="hover:text-white ml-1 font-sans">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="relative w-full">
+                <textarea
+                  rows={1}
+                  value={chatInput}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setChatInput(val);
+                    const match = val.match(/@(\S*)$/);
+                    if (match) {
+                      setShowMentionPopover(true);
+                      setMentionQuery(match[1]);
+                    } else {
+                      setShowMentionPopover(false);
+                    }
+                  }}
+                  placeholder="Type @ to reference files, or ask a question..."
+                  disabled={isLoading}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (showMentionPopover) {
+                        // User pressed enter while popover is open.
+                        // For simplicity, we just close it and let them continue typing.
+                        // Ideally, we could select the top result.
+                        setShowMentionPopover(false);
+                        return;
+                      }
+                      if (!chatInput.trim() && attachedFiles.length === 0) return;
+                      if (isLoading) return;
+                      handleSendMessage(chatInput.trim(), attachedFiles);
+                      setChatInput("");
+                      setAttachedFiles([]);
+                    }
+                  }}
+                  className="w-full text-sm bg-transparent border-0 focus:outline-none focus:ring-0 dark:text-gray-200 text-gray-800 resize-none placeholder:text-gray-600 min-h-[24px] max-h-36 font-sans px-1"
+                />
+                
+                {showMentionPopover && (
+                  <div className="absolute bottom-full left-0 mb-2 w-72 bg-slate-900 border border-slate-700 rounded-lg shadow-xl max-h-48 overflow-y-auto z-50 py-1">
+                    <div className="px-3 py-1.5 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Project Files</div>
+                    {files.filter(f => f.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 15).map(f => (
+                      <div 
+                        key={f}
+                        className="px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800 cursor-pointer flex items-center gap-2 font-mono truncate"
+                        onClick={() => {
+                          setAttachedFiles(prev => {
+                            if (!prev.includes(f)) return [...prev, f];
+                            return prev;
+                          });
+                          const filename = f.split(/[/\\]/).pop();
+                          setChatInput(prev => prev.replace(/@\S*$/, `@${filename} `));
+                          setShowMentionPopover(false);
+                          document.querySelector('textarea')?.focus();
+                        }}
+                      >
+                        <FileText className="w-3 h-3 text-emerald-400 shrink-0" />
+                        <span className="truncate">{f}</span>
+                      </div>
+                    ))}
+                    {files.filter(f => f.toLowerCase().includes(mentionQuery.toLowerCase())).length === 0 && (
+                      <div className="px-3 py-2 text-xs text-slate-500 italic">No files found...</div>
+                    )}
+                  </div>
+                )}
+              </div>
               
-              {/* Bottom control panel inside textbox */}
-              <div className="flex items-center justify-between border-t border-white/[0.02] pt-2">
-                <div className="flex items-center gap-1.5 text-xs text-gray-500 font-mono">
-                  <button className="flex items-center gap-1 hover:text-gray-300 border border-white/[0.03] hover:border-white/5 bg-white/[0.01] hover:bg-white/[0.03] px-2.5 py-1 rounded-md transition text-[10px]">
-                    <Folder className="w-3.5 h-3.5 text-arivuIndigo" /> Files
+              <div className="flex items-center justify-between border-t dark:border-white/5 border-gray-100 pt-2">
+                <div className="flex items-center gap-1.5 text-xs dark:text-gray-500 text-gray-600 font-mono">
+                  <button 
+                    onClick={() => setShowFilesModal(true)}
+                    className={`flex items-center gap-1.5 border px-3 py-1.5 rounded-lg transition text-[11px] ${
+                      showFilesModal 
+                        ? "border-arivuEmerald/50 bg-arivuEmerald/10 text-arivuEmerald shadow-emeraldGlow" 
+                        : "dark:border-white/5 border-gray-200 hover:dark:text-gray-300 hover:bg-black/5"
+                    }`}
+                  >
+                    <FolderOpen className={`w-3.5 h-3.5 ${showFilesModal ? "text-arivuEmerald" : "text-arivuIndigo"}`} />
+                    <span>Files</span>
                   </button>
-                  <button className="flex items-center gap-1 hover:text-gray-300 border border-white/[0.03] hover:border-white/5 bg-white/[0.01] hover:bg-white/[0.03] px-2.5 py-1 rounded-md transition text-[10px]">
-                    <Search className="w-3.5 h-3.5 text-arivuEmerald" /> Search
-                  </button>
-                  <button className="flex items-center gap-1 hover:text-gray-300 border border-white/[0.03] hover:border-white/5 bg-white/[0.01] hover:bg-white/[0.03] px-2.5 py-1 rounded-md transition text-[10px]">
-                    <Layers className="w-3.5 h-3.5 text-arivuIndigo" /> Graph
-                  </button>
-                  <button className="p-1 hover:text-gray-300 transition ml-1" title="Attach file">
-                    <Paperclip className="w-3.5 h-3.5" />
+                  <button 
+                    onClick={() => setShowGraphModal(true)}
+                    className={`flex items-center gap-1.5 border px-3 py-1.5 rounded-lg transition text-[11px] ${
+                      showGraphModal 
+                        ? "border-arivuIndigo/50 bg-arivuIndigo/10 text-arivuIndigo shadow-indigoGlow" 
+                        : "dark:border-white/5 border-gray-200 hover:dark:text-gray-300 hover:bg-black/5"
+                    }`}
+                  >
+                    <Network className={`w-3.5 h-3.5 ${showGraphModal ? "text-arivuIndigo-light" : "text-arivuIndigo"}`} />
+                    <span>Graph</span>
                   </button>
                 </div>
-
+                
                 <div className="flex items-center gap-2">
-                  <span className="text-[9px] text-gray-600 font-mono hidden md:inline">
-                    Enter to send • Shift+Enter for new line
+                  <button className="p-2 hover:dark:text-gray-300 text-gray-600 transition hover:bg-white/5 rounded-lg" title="Attach file">
+                    <Paperclip className="w-4 h-4" />
+                  </button>
+                  <span className="text-[9px] text-gray-600 font-mono hidden md:inline mr-2">
+                    All analysis performed locally • Your data never leaves this machine
                   </span>
-                  
                   <button
                     onClick={() => {
                       if (!chatInput.trim() || isLoading) return;
-                      handleSendMessage(chatInput.trim());
+                      handleSendMessage(chatInput);
                       setChatInput("");
                     }}
-                    disabled={isLoading || !chatInput.trim()}
-                    className="w-8 h-8 rounded-lg bg-arivuIndigo hover:bg-arivuIndigo-dark text-white flex items-center justify-center transition disabled:opacity-40 shadow-indigoGlow shrink-0 glow-violet"
+                    disabled={!chatInput.trim() || isLoading}
+                    className="p-2 rounded-lg bg-arivuEmerald/10 text-arivuEmerald hover:bg-arivuEmerald/20 transition disabled:opacity-50 disabled:cursor-not-allowed border border-arivuEmerald/20"
                   >
-                    <Send className="w-3.5 h-3.5" />
+                    <Send className="w-4 h-4" />
                   </button>
                 </div>
               </div>
-            </div>
-            
-            <div className="max-w-3xl mx-auto flex justify-between px-2 pt-2 text-[9px] font-mono text-gray-600">
-              <span>100% Private - Air-gapped Mode</span>
-              <span>No context loaded</span>
             </div>
           </div>
         )}
       </main>
 
       {/* ==================== 3. RIGHT INFRASTRUCTURE COLUMN ==================== */}
-      <aside className="w-76 shrink-0 bg-[#07080b]/90 flex flex-col h-full z-10 overflow-y-auto">
+      <aside className="w-76 shrink-0 dark:bg-[#07080b] bg-white/90 flex flex-col h-full z-10 overflow-y-auto">
         
-        {/* Card 1: AI & Infrastructure */}
-        <div className="p-5 border-b border-white/[0.04] flex flex-col gap-4">
+        <div className="p-5 flex flex-col gap-4">
           <h3 className="text-[10px] font-bold uppercase tracking-wider text-gray-500">AI & Infrastructure</h3>
           
           <div className="space-y-3.5">
-            {/* Sub-card 1: Model */}
-            <div className="p-3.5 rounded-xl border border-white/[0.03] bg-[#0c0d12]/50 flex flex-col gap-3">
-              <div className="flex items-center justify-between border-b border-white/[0.02] pb-2">
+            <div className="p-3.5 rounded-xl border border-arivuEmerald/30 dark:bg-arivuEmerald/5 bg-arivuEmerald/10 flex flex-col gap-3 shadow-emeraldGlow relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-arivuEmerald/5 to-transparent animate-progressLine pointer-events-none"></div>
+              <div className="flex items-center justify-between border-b dark:border-white/5 border-gray-200 pb-2 relative z-10">
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-violet-500/10 flex items-center justify-center text-violet-400 border border-violet-500/10 glow-violet">
+                  <div className="w-7 h-7 rounded-lg bg-arivuEmerald/10 flex items-center justify-center text-arivuEmerald border border-arivuEmerald/20 glow-glow">
                     <Cpu className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-[8px] font-bold font-mono text-gray-500 uppercase">Model (Ollama Local)</div>
-                    <div className="text-xs font-extrabold text-gray-200 mt-0.5">{health?.llm_model?.split(":")[0] || "qwen2.5-coder"}</div>
+                    <div className="text-[8px] font-bold font-mono dark:text-gray-400 text-gray-600 uppercase">Ollama Model</div>
+                    <div className="text-xs font-extrabold dark:text-gray-100 text-gray-900 mt-0.5">qwen2.5-coder</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 text-[9px] font-mono px-2 py-0.5 rounded border border-arivuEmerald/10 bg-arivuEmerald/5 text-arivuEmerald-light">
-                  <span className="w-1 h-1 rounded-full bg-arivuEmerald"></span> Running
+                  <span className="w-1.5 h-1.5 rounded-full bg-arivuEmerald animate-pulse"></span> Active
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-[9px] font-mono text-gray-500">
+              <div className="grid grid-cols-3 gap-2 text-[9px] font-mono dark:text-gray-500 text-gray-600 relative z-10">
                 <div>
-                  <div className="text-[8px] text-gray-600">Provider</div>
-                  <div className="text-gray-400 mt-0.5">Ollama Local</div>
+                  <div className="text-[8px] dark:text-gray-500 text-gray-600 uppercase">Model Size</div>
+                  <div className="dark:text-gray-300 text-gray-700 mt-0.5">7B</div>
                 </div>
                 <div>
-                  <div className="text-[8px] text-gray-600">Mode</div>
-                  <div className="text-gray-400 mt-0.5">Local Inference</div>
+                  <div className="text-[8px] dark:text-gray-500 text-gray-600 uppercase">Context Length</div>
+                  <div className="dark:text-gray-300 text-gray-700 mt-0.5">32K</div>
+                </div>
+                <div>
+                  <div className="text-[8px] dark:text-gray-500 text-gray-600 uppercase">Backend</div>
+                  <div className="dark:text-gray-300 text-gray-700 mt-0.5">Ollama (Local)</div>
                 </div>
               </div>
             </div>
 
-            {/* Sub-card 2: Embeddings */}
-            <div className="p-3.5 rounded-xl border border-white/[0.03] bg-[#0c0d12]/50 flex flex-col gap-3">
-              <div className="flex items-center justify-between border-b border-white/[0.02] pb-2">
+            <div className="p-3.5 rounded-xl dark:bg-[#0c0d12] bg-gray-100/50 flex flex-col gap-3">
+              <div className="flex items-center justify-between border-b dark:border-white/5 border-gray-200 pb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-7 h-7 rounded-lg bg-arivuEmerald/10 flex items-center justify-center text-arivuEmerald border border-arivuEmerald/10 glow-glow">
                     <Compass className="w-4 h-4" />
                   </div>
                   <div>
                     <div className="text-[8px] font-bold font-mono text-gray-500 uppercase">Embedding Model</div>
-                    <div className="text-xs font-extrabold text-gray-200 mt-0.5">{health?.embedding_model || "nomic-embed-text"}</div>
+                    <div className="text-xs font-extrabold dark:text-gray-200 text-gray-800 mt-0.5">nomic-embed-text</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 text-[9px] font-mono px-2 py-0.5 rounded border border-arivuEmerald/10 bg-arivuEmerald/5 text-arivuEmerald-light">
-                  <span className="w-1 h-1 rounded-full bg-arivuEmerald animate-pulse"></span> Ready
+                  <span className="w-1 h-1 rounded-full bg-arivuEmerald animate-pulse"></span> Active
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-[9px] font-mono text-gray-500">
+              <div className="grid grid-cols-2 gap-2 text-[9px] font-mono text-gray-500 mt-1">
                 <div>
-                  <div className="text-[8px] text-gray-600">Dimensions</div>
-                  <div className="text-gray-400 mt-0.5">768</div>
+                  <div className="text-[8px] dark:text-gray-500 text-gray-600 uppercase">Dimensions</div>
+                  <div className="dark:text-gray-300 text-gray-700 mt-0.5">768</div>
                 </div>
                 <div>
-                  <div className="text-[8px] text-gray-600">Status</div>
-                  <div className="text-gray-400 mt-0.5">Connected</div>
+                  <div className="text-[8px] dark:text-gray-500 text-gray-600 uppercase">Status</div>
+                  <div className="dark:text-gray-300 text-gray-700 mt-0.5">Ready</div>
                 </div>
               </div>
             </div>
 
-            {/* Sub-card 3: Vector Database */}
-            <div className="p-3.5 rounded-xl border border-white/[0.03] bg-[#0c0d12]/50 flex flex-col gap-3">
-              <div className="flex items-center justify-between border-b border-white/[0.02] pb-2">
+            <div className="p-3.5 rounded-xl dark:bg-[#0c0d12] bg-gray-100/50 flex flex-col gap-3">
+              <div className="flex items-center justify-between border-b dark:border-white/5 border-gray-200 pb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-7 h-7 rounded-lg bg-arivuIndigo/10 flex items-center justify-center text-arivuIndigo border border-arivuIndigo/10 shadow-indigoGlow">
                     <Database className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-[8px] font-bold font-mono text-gray-500 uppercase">Vector Database (ChromaDB)</div>
-                    <div className="text-xs font-extrabold text-gray-200 mt-0.5">
-                      {files.length > 0 ? "ChromaDB Store" : "Not Initialized"}
+                    <div className="text-[8px] font-bold font-mono text-gray-500 uppercase">Vector Database</div>
+                    <div className="text-xs font-extrabold dark:text-gray-200 text-gray-800 mt-0.5">
+                      ChromaDB
                     </div>
                   </div>
                 </div>
                 
-                {files.length > 0 ? (
-                  <div className="flex items-center gap-1 text-[9px] font-mono px-2 py-0.5 rounded border border-arivuEmerald/10 bg-arivuEmerald/5 text-arivuEmerald-light">
-                    <span className="w-1 h-1 rounded-full bg-arivuEmerald"></span> Active
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 text-[9px] font-mono px-2 py-0.5 rounded border border-yellow-500/10 bg-yellow-500/5 text-yellow-400">
-                    <span className="w-1 h-1 rounded-full bg-yellow-500"></span> Idle
-                  </div>
-                )}
+                <div className="flex items-center gap-1 text-[9px] font-mono px-2 py-0.5 rounded border border-arivuEmerald/10 bg-arivuEmerald/5 text-arivuEmerald-light">
+                  <span className="w-1 h-1 rounded-full bg-arivuEmerald"></span> Active
+                </div>
               </div>
               
-              <div className="grid grid-cols-3 gap-1 text-[9px] font-mono text-gray-500">
+              <div className="grid grid-cols-3 gap-1 text-[9px] font-mono text-gray-500 mt-1">
                 <div>
-                  <div className="text-[7px] text-gray-600 uppercase">Storage</div>
-                  <div className="text-gray-400 mt-0.5">{files.length > 0 ? "4.2 MB" : "—"}</div>
+                  <div className="text-[8px] dark:text-gray-500 text-gray-600 uppercase">Collections</div>
+                  <div className="dark:text-gray-300 text-gray-700 mt-0.5">1</div>
                 </div>
                 <div>
-                  <div className="text-[7px] text-gray-600 uppercase">Vectors</div>
-                  <div className="text-gray-400 mt-0.5">{chunksCount > 0 ? chunksCount : "—"}</div>
+                  <div className="text-[8px] dark:text-gray-500 text-gray-600 uppercase">Status</div>
+                  <div className="dark:text-gray-300 text-gray-700 mt-0.5">Ready</div>
                 </div>
                 <div>
-                  <div className="text-[7px] text-gray-600 uppercase">Colls</div>
-                  <div className="text-gray-400 mt-0.5">{files.length > 0 ? "1" : "—"}</div>
+                  <div className="text-[8px] dark:text-gray-500 text-gray-600 uppercase">Storage</div>
+                  <div className="dark:text-gray-300 text-gray-700 mt-0.5">Local</div>
                 </div>
               </div>
             </div>
 
-            {/* Sub-card 4: WebLLM Intent Router */}
-            <div className="p-3.5 rounded-xl border border-white/[0.03] bg-[#0c0d12]/50 flex flex-col gap-3">
-              <div className="flex items-center justify-between border-b border-white/[0.02] pb-2">
+            <div className="p-3.5 rounded-xl dark:bg-[#0c0d12] bg-gray-100/50 flex flex-col gap-3">
+              <div className="flex items-center justify-between border-b dark:border-white/5 border-gray-200 pb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/10 glow-glow">
                     <Layers className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-[8px] font-bold font-mono text-gray-500 uppercase">WebLLM Intent Router</div>
-                    <div className="text-xs font-extrabold text-gray-200 mt-0.5">Qwen2.5-0.5B</div>
+                    <div className="text-[8px] font-bold font-mono text-gray-500 uppercase">LLM Runtime</div>
+                    <div className="text-xs font-extrabold dark:text-gray-200 text-gray-800 mt-0.5">WebLLM (WebGPU)</div>
                   </div>
                 </div>
                 
@@ -900,7 +1123,7 @@ function App() {
                   </div>
                 )}
                 {routerState === "uninitialized" && (
-                  <div className="flex items-center gap-1 text-[9px] font-mono px-2 py-0.5 rounded border border-gray-500/10 bg-gray-500/5 text-gray-400">
+                  <div className="flex items-center gap-1 text-[9px] font-mono px-2 py-0.5 rounded border border-gray-500/10 bg-gray-500/5 dark:text-gray-400 text-gray-600">
                     <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span> Standby
                   </div>
                 )}
@@ -925,14 +1148,14 @@ function App() {
               )}
 
               {routerState === "ready" && (
-                <div className="grid grid-cols-2 gap-2 text-[9px] font-mono text-gray-500">
+                <div className="grid grid-cols-2 gap-2 text-[9px] font-mono text-gray-500 mt-1">
                   <div>
-                    <div className="text-[8px] text-gray-600">Hardware Accel</div>
-                    <div className="text-arivuEmerald-light mt-0.5 font-semibold">WebGPU Active</div>
+                    <div className="text-[8px] dark:text-gray-500 text-gray-600 uppercase">Engine</div>
+                    <div className="dark:text-gray-300 text-gray-700 mt-0.5">WebGPU</div>
                   </div>
                   <div>
-                    <div className="text-[8px] text-gray-600">Auto Routing</div>
-                    <div className="text-gray-400 mt-0.5">Enabled</div>
+                    <div className="text-[8px] dark:text-gray-500 text-gray-600 uppercase">Status</div>
+                    <div className="dark:text-gray-300 text-gray-700 mt-0.5">Running</div>
                   </div>
                 </div>
               )}
@@ -950,7 +1173,7 @@ function App() {
         <div className="p-5 flex flex-col gap-4">
           <h3 className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Privacy Status</h3>
           
-          <div className="p-5 rounded-xl border border-white/[0.03] bg-[#0c0d12]/30 text-center flex flex-col items-center gap-4">
+          <div className="p-5 rounded-xl dark:bg-[#0c0d12] bg-gray-100/30 text-center flex flex-col items-center gap-4">
             {/* Padlock Icon */}
             <div className="w-14 h-14 rounded-full border border-arivuEmerald/20 bg-arivuEmerald/5 flex items-center justify-center text-arivuEmerald shadow-emeraldGlow glow-glow">
               <Lock className="w-6 h-6 stroke-[1.5]" />
@@ -964,7 +1187,7 @@ function App() {
             </div>
             
             {/* Checklist */}
-            <ul className="w-full text-[10px] font-mono text-gray-400 space-y-2 text-left pt-2 border-t border-white/[0.02]">
+            <ul className="w-full text-[10px] font-mono dark:text-gray-400 text-gray-600 space-y-2 text-left pt-2 border-t dark:border-white/5 border-gray-200">
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-arivuEmerald shrink-0" />
                 <span>No data leaves your machine</span>
@@ -992,18 +1215,12 @@ function App() {
         </div>
       </aside>
 
-      {/* ==================== 4. SLIDING CODE PREVIEW PANEL ==================== */}
-      {activeFile && (
-        <CodeViewer
-          filePath={activeFile}
-          onClose={() => setActiveFile(null)}
-        />
-      )}
+
 
       {/* ==================== 5. GLASSMORPHIC INGESTION MODAL ==================== */}
       {showIngestModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-[450px] border border-white/[0.04] bg-[#0c0d12]/95 backdrop-blur-lg rounded-2xl p-6 arivu-glass shadow-combinedGlow flex flex-col gap-5 relative animate-in scale-in duration-200">
+          <div className="w-[450px] border dark:border-white/5 border-gray-200 dark:bg-[#0c0d12] bg-gray-100/95 backdrop-blur-lg rounded-2xl p-6 arivu-glass shadow-combinedGlow flex flex-col gap-5 relative animate-in scale-in duration-200">
             
             {/* Close button */}
             <button
@@ -1015,13 +1232,13 @@ function App() {
                 }
               }}
               disabled={modalLoading}
-              className="absolute right-4 top-4 p-1 hover:text-white text-gray-400 rounded hover:bg-white/5 transition disabled:opacity-30"
+              className="absolute right-4 top-4 p-1 hover:text-white dark:text-gray-400 text-gray-600 rounded hover:bg-white/5 transition disabled:opacity-30"
             >
               <X className="w-4 h-4" />
             </button>
             
             <div className="space-y-1">
-              <h2 className="text-sm font-extrabold tracking-wide uppercase text-gray-100 flex items-center gap-2">
+              <h2 className="text-sm font-extrabold tracking-wide uppercase dark:text-gray-100 text-gray-900 flex items-center gap-2">
                 <FolderOpen className="w-4 h-4 text-arivuIndigo" /> Ingest Local Codebase
               </h2>
               <p className="text-[10px] text-gray-500 font-mono">
@@ -1030,18 +1247,18 @@ function App() {
             </div>
 
             {/* Ingestion Tabs */}
-            <div className="flex border-b border-white/[0.04] text-xs font-mono text-gray-500">
+            <div className="flex text-xs font-mono text-gray-500">
               <button
                 onClick={() => setActiveTab("path")}
                 disabled={modalLoading}
-                className={`flex-1 py-2 text-center border-b-2 transition ${activeTab === "path" ? "text-arivuIndigo-light border-arivuIndigo font-bold" : "border-transparent hover:text-gray-300"}`}
+                className={`flex-1 py-2 text-center border-b-2 transition ${activeTab === "path" ? "text-arivuIndigo-light border-arivuIndigo font-bold" : "border-transparent hover:dark:text-gray-300 text-gray-700"}`}
               >
                 Local Path Ingest
               </button>
               <button
                 onClick={() => setActiveTab("zip")}
                 disabled={modalLoading}
-                className={`flex-1 py-2 text-center border-b-2 transition ${activeTab === "zip" ? "text-arivuEmerald-light border-arivuEmerald font-bold" : "border-transparent hover:text-gray-300"}`}
+                className={`flex-1 py-2 text-center border-b-2 transition ${activeTab === "zip" ? "text-arivuEmerald-light border-arivuEmerald font-bold" : "border-transparent hover:dark:text-gray-300 text-gray-700"}`}
               >
                 Upload ZIP Archive
               </button>
@@ -1062,7 +1279,7 @@ function App() {
                       value={dirPath}
                       onChange={(e) => setDirPath(e.target.value)}
                       disabled={modalLoading}
-                      className="flex-1 text-xs bg-darkBg/90 border border-white/5 hover:border-white/10 focus:border-arivuIndigo focus:ring-1 focus:ring-arivuIndigo focus:outline-none rounded-lg px-3 py-2.5 text-gray-200 transition font-mono placeholder:text-gray-700"
+                      className="flex-1 text-xs dark:bg-darkBg bg-gray-50/90 border dark:border-white/5 border-gray-200 hover:dark:border-white/10 border-gray-200 focus:border-arivuIndigo focus:ring-1 focus:ring-arivuIndigo focus:outline-none rounded-lg px-3 py-2.5 dark:text-gray-200 text-gray-800 transition font-mono placeholder:text-gray-700"
                     />
                     <button
                       type="button"
@@ -1073,7 +1290,7 @@ function App() {
                           setDirPath(selected);
                         }
                       }}
-                      className="px-3 border border-white/5 hover:border-arivuIndigo/40 bg-white/[0.02] hover:bg-arivuIndigo/5 rounded-lg text-gray-400 hover:text-white transition flex items-center justify-center"
+                      className="px-3 border dark:border-white/5 border-gray-200 hover:border-arivuIndigo/40 bg-white/[0.02] hover:bg-arivuIndigo/5 rounded-lg dark:text-gray-400 text-gray-600 hover:text-white transition flex items-center justify-center"
                       title="Browse Local Folder"
                     >
                       <FolderOpen className="w-4 h-4" />
@@ -1097,7 +1314,7 @@ function App() {
                     Select Archive
                   </label>
                   
-                  <div className="relative border border-dashed border-white/10 hover:border-arivuEmerald/40 rounded-xl py-6 px-4 text-center transition cursor-pointer bg-darkBg/30 flex flex-col items-center justify-center gap-2">
+                  <div className="relative border border-dashed dark:border-white/10 border-gray-200 hover:border-arivuEmerald/40 rounded-xl py-6 px-4 text-center transition cursor-pointer dark:bg-darkBg bg-gray-50/30 flex flex-col items-center justify-center gap-2">
                     <input
                       type="file"
                       accept=".zip"
@@ -1106,7 +1323,7 @@ function App() {
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
                     />
                     <Folder className="w-8 h-8 text-gray-600 stroke-[1.2]" />
-                    <span className="text-xs text-gray-400 font-medium font-mono">Drag or click to choose .zip repository</span>
+                    <span className="text-xs dark:text-gray-400 text-gray-600 font-medium font-mono">Drag or click to choose .zip repository</span>
                     <span className="text-[9px] text-gray-600 font-mono">Max volume: 150MB</span>
                   </div>
                 </div>
@@ -1115,7 +1332,7 @@ function App() {
 
             {/* Modal Progress diagnostics */}
             {(modalLoading || modalProgress) && (
-              <div className="flex flex-col gap-3.5 border-t border-white/[0.02] pt-4 mt-2">
+              <div className="flex flex-col gap-3.5 border-t dark:border-white/5 border-gray-200 pt-4 mt-2">
                 {modalLoading ? (
                   <div className="space-y-3">
                     {/* Animated Progress Bar */}
@@ -1125,7 +1342,7 @@ function App() {
                     
                     {/* Diagnostic Checklist */}
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between text-[10px] font-mono text-gray-400">
+                      <div className="flex items-center justify-between text-[10px] font-mono dark:text-gray-400 text-gray-600">
                         <span className="flex items-center gap-1.5">
                           <Loader2 className="w-3.5 h-3.5 text-arivuIndigo animate-spin" />
                           <span>{modalProgress || "Processing repository assets..."}</span>
@@ -1138,7 +1355,7 @@ function App() {
                         <div className={`p-2 rounded-lg border text-center font-mono text-[9px] flex flex-col gap-1 transition-all ${
                           ingestPhase >= 1
                             ? "bg-arivuIndigo/10 border-arivuIndigo/30 text-arivuIndigo-light"
-                            : "bg-white/[0.01] border-white/[0.04] text-gray-600"
+                            : "bg-white/[0.01] dark:border-white/5 border-gray-200 text-gray-600"
                         }`}>
                           <span className="font-extrabold uppercase">Phase 1</span>
                           <span>AST parsing</span>
@@ -1146,7 +1363,7 @@ function App() {
                         <div className={`p-2 rounded-lg border text-center font-mono text-[9px] flex flex-col gap-1 transition-all ${
                           ingestPhase >= 2
                             ? "bg-arivuIndigo/10 border-arivuIndigo/30 text-arivuIndigo-light"
-                            : "bg-white/[0.01] border-white/[0.04] text-gray-600"
+                            : "bg-white/[0.01] dark:border-white/5 border-gray-200 text-gray-600"
                         }`}>
                           <span className="font-extrabold uppercase">Phase 2</span>
                           <span>Graph mapping</span>
@@ -1154,7 +1371,7 @@ function App() {
                         <div className={`p-2 rounded-lg border text-center font-mono text-[9px] flex flex-col gap-1 transition-all ${
                           ingestPhase >= 3
                             ? "bg-arivuIndigo/10 border-arivuIndigo/30 text-arivuIndigo-light"
-                            : "bg-white/[0.01] border-white/[0.04] text-gray-600"
+                            : "bg-white/[0.01] dark:border-white/5 border-gray-200 text-gray-600"
                         }`}>
                           <span className="font-extrabold uppercase">Phase 3</span>
                           <span>Vector indexing</span>
@@ -1181,8 +1398,8 @@ function App() {
                       )}
                       <span>{modalProgress.includes("failed") || modalProgress.includes("Error") ? "Ingestion Failed" : "Ingestion Complete"}</span>
                     </div>
-                    <div className="text-[10px] text-gray-400 font-mono leading-relaxed space-y-1">
-                      <div className="truncate"><strong className="text-gray-300">Target Path:</strong> <span className="text-gray-500">{dirPath || workspacePath || "Uploaded Archive"}</span></div>
+                    <div className="text-[10px] dark:text-gray-400 text-gray-600 font-mono leading-relaxed space-y-1">
+                      <div className="truncate"><strong className="dark:text-gray-300 text-gray-700">Target Path:</strong> <span className="text-gray-500">{dirPath || workspacePath || "Uploaded Archive"}</span></div>
                       <div>{modalProgress}</div>
                     </div>
                     <button

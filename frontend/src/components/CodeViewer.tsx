@@ -3,12 +3,13 @@ import { X, Copy, Check, FileCode2, Loader2 } from "lucide-react";
 
 interface CodeViewerProps {
   filePath: string | null;
+  isDarkMode: boolean;
   onClose: () => void;
 }
 
-const API_BASE = "http://localhost:8000/api";
+const API_BASE = "http://localhost:11411/api";
 
-export const CodeViewer: React.FC<CodeViewerProps> = ({ filePath, onClose }) => {
+export const CodeViewer: React.FC<CodeViewerProps> = ({ filePath, isDarkMode, onClose }) => {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
@@ -47,10 +48,10 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({ filePath, onClose }) => 
   const extension = filePath.split(".").pop() || "txt";
 
   return (
-    <div className="w-[450px] shrink-0 border-l border-darkBorder bg-darkBg/95 backdrop-blur-lg flex flex-col h-full z-20 arivu-glass shadow-indigoGlow animate-in slide-in-from-right duration-250">
+    <div className="flex-1 flex flex-col h-full dark:bg-darkBg bg-gray-50/95 backdrop-blur-lg z-20 animate-in fade-in duration-250">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-darkBorder bg-darkBg/60">
-        <div className="flex items-center gap-2 text-xs font-mono font-medium text-gray-300 truncate pr-4">
+      <div className="flex items-center justify-between p-4 border-b dark:border-darkBorder border-gray-200 dark:bg-darkBg bg-gray-50/60">
+        <div className="flex items-center gap-2 text-xs font-mono font-medium dark:text-gray-300 text-gray-700 truncate pr-4">
           <FileCode2 className="w-4 h-4 text-arivuEmerald shrink-0" />
           <span className="truncate" title={filePath}>{filePath}</span>
         </div>
@@ -58,7 +59,7 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({ filePath, onClose }) => 
           <button
             onClick={handleCopy}
             disabled={loading}
-            className="p-1.5 hover:text-white text-gray-400 rounded hover:bg-white/5 transition flex items-center gap-1 text-[10px] font-mono disabled:opacity-40"
+            className="p-1.5 hover:text-white dark:text-gray-400 text-gray-600 rounded hover:bg-white/5 transition flex items-center gap-1 text-[10px] font-mono disabled:opacity-40"
           >
             {copied ? (
               <>
@@ -74,7 +75,7 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({ filePath, onClose }) => 
           </button>
           <button
             onClick={onClose}
-            className="p-1 hover:text-white text-gray-400 rounded hover:bg-white/5 transition"
+            className="p-1 hover:text-white dark:text-gray-400 text-gray-600 rounded hover:bg-white/5 transition"
           >
             <X className="w-4 h-4" />
           </button>
@@ -82,7 +83,7 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({ filePath, onClose }) => 
       </div>
 
       {/* Code viewport */}
-      <div className="flex-1 overflow-auto p-4 bg-black/45 font-mono text-[11px] leading-relaxed text-gray-300">
+      <div className={`flex-1 overflow-auto p-4 font-mono text-[11px] leading-relaxed dark:text-gray-300 text-gray-800 ${isDarkMode ? 'bg-black/45' : 'bg-white'}`}>
         {loading ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500 font-mono text-xs">
             <Loader2 className="w-5 h-5 animate-spin text-arivuIndigo" />
@@ -91,7 +92,7 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({ filePath, onClose }) => 
         ) : (
           <pre className="relative flex">
             {/* Row index counter column */}
-            <div className="select-none pr-4 border-r border-white/5 text-right text-gray-600 font-mono">
+            <div className="select-none pr-4 border-r dark:border-white/5 border-gray-200 text-right text-gray-600 font-mono">
               {content.split("\n").map((_, idx) => (
                 <div key={idx}>{idx + 1}</div>
               ))}

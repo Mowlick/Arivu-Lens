@@ -6,11 +6,11 @@ Compi-Lens is an enterprise-grade, privacy-first **Local Codebase Search & AI en
 
 ## 🛠️ Technology Stack
 
-* **Frontend**: React (TypeScript), Vite, Tailwind CSS, Lucide Icons, React Markdown.
+* **Frontend**: React (TypeScript), Vite, Tailwind CSS, Lucide Icons.
 * **Backend API**: FastAPI (Python), Uvicorn.
 * **Vector Store**: ChromaDB (Local Persistent Storage).
 * **Embeddings Model**: `nomic-embed-text` (running locally via Ollama).
-* **LLM Inference**: `qwen2.5-coder:7b` or `llama3` (running locally via Ollama).
+* **LLM Inference**: `qwen2.5-coder:7b` (running locally via Ollama).
 
 ---
 
@@ -21,66 +21,52 @@ Follow these steps to run Compi-Lens completely locally.
 ### Step 1: Install & Set Up Ollama
 
 1. Download and install [Ollama](https://ollama.com/) on your local machine.
-2. Open a terminal and pull the required embedding and coding models:
+2. Open a terminal (PowerShell or Command Prompt) and pull the required AI models:
    ```bash
-   # Pull embedding model (768 dimensions, highly optimized for code/text)
+   # Pull embedding model (highly optimized for semantic code search)
    ollama pull nomic-embed-text
    
    # Pull the local reasoning LLM (perfect for code interpretation)
    ollama pull qwen2.5-coder:7b
    ```
-3. Make sure the Ollama server is running (default port is `11434`).
+3. Make sure the Ollama application is running in the background (you should see the llama icon in your system tray, or you can run `ollama serve` in a terminal).
 
-### Step 2: Run the Backend API
+### Step 2: Run the Application (Tauri Desktop App)
 
-1. Navigate to the `backend/` directory:
+Compi-Lens is built as a highly optimized desktop application. To start it up for development:
+
+1. Open a terminal in the root directory of the project.
+2. Install the necessary frontend dependencies:
+   ```bash
+   cd frontend
+   npm install
+   cd ..
+   ```
+3. Install the Python backend dependencies:
    ```bash
    cd backend
-   ```
-2. Create a virtual environment (optional but recommended):
-   ```bash
    python -m venv venv
    # On Windows:
    venv\Scripts\activate
-   # On macOS/Linux:
-   source venv/bin/activate
-   ```
-3. Install required Python packages:
-   ```bash
+   # Install dependencies
    pip install -r requirements.txt
+   cd ..
    ```
-4. Start the FastAPI server:
+4. Start the Tauri Developer server (which automatically bundles the backend and frontend):
    ```bash
-   python run.py
+   npx @tauri-apps/cli dev
    ```
-   The backend will run on [http://127.0.0.1:8000](http://127.0.0.1:8000). You can check Swagger docs at `/docs`.
-
-### Step 3: Run the Frontend Application
-
-1. Open a new terminal and navigate to the `frontend/` directory:
-   ```bash
-   cd frontend
-   ```
-2. Make sure dependencies are installed (already scaffolded):
-   ```bash
-   npm install
-   ```
-3. Launch the local dev server:
-   ```bash
-   npm run dev
-   ```
-   The user interface will be available at [http://localhost:5173](http://localhost:5173).
 
 ---
 
 ## 💡 How It Works (RAG Flow)
 
-1. **Ingest**: Specify a local folder path or upload a `.zip`. Files are loaded, ignoring directories like `.git`, `node_modules`, etc.
-2. **Chunk**: Code files are parsed and chunked using **Language-Aware Recursive Separators** (keeping classes and functions contextually together).
-3. **Embed**: Chunks are sent to the local Ollama `/api/embed` endpoint using `nomic-embed-text`.
-4. **Store**: Vectors are written directly to a local, persistent **ChromaDB** store.
-5. **Retrieve**: When you ask a question, your query is embedded, ChromaDB retrieves the top 3-5 most mathematically relevant source snippets.
-6. **Synthesize & Stream**: The retrieved code chunks are injected into a system developer prompt, and the `qwen2.5-coder:7b` model streams the answer back to your chat window, highlighting the files utilized as sources.
+1. **Ingest**: Click "INDEX LOCAL FOLDER" to select a local directory. Files are loaded, explicitly ignoring build artifacts and directories like `.git`, `node_modules`, `target_custom`, etc.
+2. **Chunk**: Code files are parsed and chunked using **Language-Aware Recursive Separators** or **Tree-Sitter AST Parsers**.
+3. **Embed**: Chunks are sent to the local Ollama `/api/embed` endpoint.
+4. **Store**: Vectors are written directly to a local, persistent **ChromaDB** database on your local disk.
+5. **Retrieve**: When you ask a question in the Chat Tab, your query retrieves the top most mathematically relevant source snippets from your codebase.
+6. **Synthesize & Stream**: The retrieved code chunks are injected into a strict system developer prompt, and the AI model streams the answer back to your chat window, backing up all claims with exact code snippets and allowing you to open the sources in the **Code Viewer Tab**.
 
 ---
 

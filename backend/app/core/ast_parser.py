@@ -37,8 +37,13 @@ class CodeGraphParser:
             return []
 
         try:
-            # Compliant with tree-sitter version 0.22.0+ constructor formats
-            parser = Parser(lang)
+            parser = Parser()
+            try:
+                parser.set_language(lang)
+            except AttributeError:
+                # Compliant with tree-sitter version 0.22.0+ constructor formats
+                parser = Parser(lang)
+            
             tree = parser.parse(bytes(content, "utf8"))
             root_node = tree.root_node
         except Exception as e:

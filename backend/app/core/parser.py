@@ -109,7 +109,7 @@ def chunk_file(base_dir: str, rel_path: str) -> List[Dict[str, Any]]:
         # Simple heuristic to find line numbers
         try:
             # Look for snippet starting substring
-            first_few_chars = snippet[:100].strip()
+            first_few_chars = snippet[:100].split('\n')[0].strip()
             for line_idx, line in enumerate(lines):
                 if first_few_chars in line:
                     start_line = line_idx + 1

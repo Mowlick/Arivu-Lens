@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Folder, FolderOpen, FileCode2, Search, ChevronRight, ChevronDown } from "lucide-react";
+import { Folder, FolderOpen, FileCode2, ChevronRight, ChevronDown } from "lucide-react";
 
 interface FileTreeProps {
   files: string[];
@@ -15,18 +15,13 @@ interface TreeNode {
 }
 
 export const FileTree: React.FC<FileTreeProps> = ({ files, activeFile, onSelectFile }) => {
-  const [searchTerm, setSearchTerm] = useState("");
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
 
   // Parse flat file paths into a nested tree structure
   const treeData = useMemo(() => {
     const root: Record<string, TreeNode> = {};
 
-    const filteredFiles = files.filter(f => 
-      f.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    filteredFiles.forEach(filePath => {
+    files.forEach(filePath => {
       const parts = filePath.split(/[/\\]/);
       let currentLevel = root;
       let accumulatedPath = "";
@@ -48,7 +43,7 @@ export const FileTree: React.FC<FileTreeProps> = ({ files, activeFile, onSelectF
     });
 
     return root;
-  }, [files, searchTerm]);
+  }, [files]);
 
   const toggleExpand = (nodePath: string) => {
     setExpandedNodes(prev => ({
@@ -82,8 +77,8 @@ export const FileTree: React.FC<FileTreeProps> = ({ files, activeFile, onSelectF
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
           className={`flex items-center gap-1.5 py-1 px-2 mx-1.5 rounded-md text-xs cursor-pointer transition font-mono ${
             isActive 
-              ? "bg-arivuIndigo/25 text-arivuIndigo-light border-l-2 border-arivuIndigo shadow-sm" 
-              : "text-gray-400 hover:text-gray-200 hover:bg-white/5"
+              ? "bg-arivuIndigo/10 text-arivuIndigo-light border-l-[3px] border-arivuIndigo shadow-sm" 
+              : "dark:text-gray-400 text-gray-600 hover:dark:text-gray-200 text-gray-800 hover:bg-white/5 hover:bg-gray-100"
           }`}
         >
           {isFolder ? (
@@ -125,22 +120,8 @@ export const FileTree: React.FC<FileTreeProps> = ({ files, activeFile, onSelectF
   }, [treeData]);
 
   return (
-    <div className="flex flex-col h-full bg-darkBg/90 border-r border-darkBorder w-64 shrink-0 overflow-hidden">
+    <div className="flex flex-col h-full dark:bg-darkBg bg-gray-50/90 border-r dark:border-darkBorder border-gray-200 w-64 shrink-0 overflow-hidden">
       {/* File Search */}
-      <div className="p-3 border-b border-darkBorder flex items-center gap-2 bg-darkBg/50">
-        <div className="relative flex-1">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
-            <Search className="w-3.5 h-3.5 text-gray-600" />
-          </span>
-          <input
-            type="text"
-            placeholder="Search files..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full text-xs bg-darkPanel border border-darkBorder hover:border-arivuIndigo/40 focus:border-arivuIndigo focus:outline-none focus:ring-1 focus:ring-arivuIndigo rounded px-2.5 py-1.5 pl-8 text-gray-300 font-mono transition"
-          />
-        </div>
-      </div>
 
       {/* Tree container */}
       <div className="flex-1 overflow-y-auto py-3">
@@ -160,7 +141,7 @@ export const FileTree: React.FC<FileTreeProps> = ({ files, activeFile, onSelectF
 
       {/* Footer statistics */}
       {files.length > 0 && (
-        <div className="p-2.5 border-t border-darkBorder text-[10px] text-gray-500 font-mono text-center bg-darkBg/60">
+        <div className="p-2.5 border-t dark:border-darkBorder border-gray-200 text-[10px] text-gray-500 font-mono text-center dark:bg-darkBg bg-gray-50/60">
           Indexed {files.length} source file{files.length === 1 ? "" : "s"}
         </div>
       )}

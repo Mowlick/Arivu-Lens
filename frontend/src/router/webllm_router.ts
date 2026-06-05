@@ -38,7 +38,7 @@ export class WebLLMRouter {
     const systemPrompt = 
       "You are a strict, instant Intent Router. Classify the user query into one of two options:\n" +
       "1. 'local_chat': If the user is asking a general programming question (e.g., 'write a quicksort', 'hello', 'what is an array'), basic math, or general logic that does NOT require scanning their local codebase.\n" +
-      "2. 'graph_rag': If the user is asking specifically about functions, classes, database setups, workspace connections, imports, file trees, or bugs located inside their active codebase.\n\n" +
+      "2. 'graph_rag': If the user is asking specifically about functions, classes, database setups, workspace connections, imports, file trees, bugs located inside their active codebase, uses '@', or mentions structural definitions.\n\n" +
       "Reply with ONLY a single word: 'local_chat' or 'graph_rag'. Do not write explanations.";
 
     try {

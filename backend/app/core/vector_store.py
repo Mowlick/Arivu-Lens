@@ -59,7 +59,15 @@ class VectorStore:
             return
 
         texts = [chunk["content"] for chunk in chunks]
-        metadatas = [chunk["metadata"] for chunk in chunks]
+        metadatas = []
+        for chunk in chunks:
+            safe_meta = {}
+            for k, v in chunk.get("metadata", {}).items():
+                if isinstance(v, (list, dict)):
+                    safe_meta[k] = str(v)
+                else:
+                    safe_meta[k] = v
+            metadatas.append(safe_meta)
         
         # Resolve distinct node IDs. AST parser chunks have custom unique node IDs.
         ids = []
@@ -95,16 +103,25 @@ class VectorStore:
             
         code_graph_store.save_graph()
 
-    def query_similar(self, query_text: str, n_results: int = 5) -> List[Dict[str, Any]]:
+    def query_similar(self, query_text: str, n_results: int = 5, filter_files: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Queries ChromaDB and traverses relational neighbors to return connected Graph RAG context."""
         query_vector = self._get_embedding_ollama_single(query_text)
         if not query_vector:
             return []
 
+        # Build where clause if filter_files are provided
+        where_clause = None
+        if filter_files and len(filter_files) > 0:
+            if len(filter_files) == 1:
+                where_clause = {"file_path": filter_files[0]}
+            else:
+                where_clause = {"file_path": {"$in": filter_files}}
+
         # Fetch seed matches
         results = self.collection.query(
             query_embeddings=[query_vector],
-            n_results=n_results
+            n_results=n_results,
+            where=where_clause
         )
 
         formatted_results = []
