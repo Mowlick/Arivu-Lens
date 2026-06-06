@@ -60,24 +60,39 @@ def chunk_file(base_dir: str, rel_path: str) -> List[Dict[str, Any]]:
     abs_path = os.path.abspath(os.path.join(base_dir, rel_path))
     ext = os.path.splitext(rel_path)[1].lower()
     
-    try:
-        with open(abs_path, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
-    except Exception as e:
-        print(f"Error reading file {abs_path}: {e}")
+    content = None
+    encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
+    
+    for enc in encodings:
+        try:
+            with open(abs_path, 'r', encoding=enc) as f:
+                content = f.read()
+            # If successful, print which encoding was used
+            print(f"[ENCODING] {rel_path} -> {enc}")
+            break
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:
+            print(f"[ERROR] Failed to read {rel_path}: {e}")
+            return []
+            
+    if content is None:
+        print(f"[FAILED - Unreadable] Could not decode {rel_path} with supported encodings.")
         return []
         
     if not content.strip():
+        print(f"[WARNING - Empty] {rel_path} contains no readable text.")
         return []
 
     # 1. Structural AST parsing for supported languages
     if ext in ['.py', '.js', '.jsx', '.ts', '.tsx']:
         try:
             ast_chunks = ast_parser.parse_structure(rel_path, content)
-            if ast_chunks:
+            if ast_chunks and len(ast_chunks) > 0:
+                print(f"[SUCCESS - AST] Parsed {rel_path} -> {len(ast_chunks)} chunks")
                 return ast_chunks
         except Exception as e:
-            print(f"Tree-sitter AST parsing failed on {rel_path}, falling back to character splits: {e}")
+            print(f"[RECOVERY] AST parsing failed on {rel_path}, falling back to semantic splits: {e}")
         
     lang = EXTENSION_TO_LANGUAGE.get(ext)
     
@@ -130,6 +145,11 @@ def chunk_file(base_dir: str, rel_path: str) -> List[Dict[str, Any]]:
                 "end_line": end_line
             }
         })
+        
+    if len(chunks) == 0:
+        print(f"[WARNING - Empty] Fallback chunker produced 0 chunks for {rel_path}")
+    else:
+        print(f"[RECOVERY - Fallback] Used text chunker on {rel_path} -> {len(chunks)} chunks")
         
     return chunks
 

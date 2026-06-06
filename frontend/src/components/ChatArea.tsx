@@ -1,6 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { Terminal, Copy, Check, Search, Bug, ShieldCheck, Network, Clock, SquarePen, ChevronDown, FileText } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+
+const LOADING_STAGES = [
+  "Analyzing repository...",
+  "Building retrieval context...",
+  "Generating architectural insights...",
+  "Finalizing response..."
+];
 
 interface Source {
   file_path: string;
@@ -87,11 +95,25 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 }) => {
   const [showSessionsDropdown, setShowSessionsDropdown] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+  const [loadingStage, setLoadingStage] = useState(0);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    scrollToBottom();
   }, [messages, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) {
+      setLoadingStage(0);
+      const interval = setInterval(() => {
+        setLoadingStage(prev => (prev < LOADING_STAGES.length - 1 ? prev + 1 : prev));
+      }, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [isLoading]);
 
   return (
     <div className="flex flex-col flex-1 h-full dark:bg-darkBg bg-gray-50/30 relative overflow-hidden">
@@ -118,8 +140,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               ) : (
                 sessionsList.map(s => {
                   const isActive = s.session_id === currentSessionId;
-                  const firstMessage = s.chat_history.find((m: any) => m.role === "user");
-                  const preview = firstMessage ? firstMessage.content.slice(0, 30) + "..." : "Empty Session";
+                  const preview = s.title || s.preview || "Empty Session";
                   const date = new Date(s.last_accessed).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                   return (
                     <button
@@ -203,12 +224,16 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           </div>
         ) : (
           <div className="max-w-3xl mx-auto space-y-6">
+            <AnimatePresence mode="popLayout">
             {messages.map((msg) => {
               const isUser = msg.role === "user";
               return (
-                <div
+                <motion.div
+                  initial={!isUser ? { opacity: 0, y: 20 } : false}
+                  animate={!isUser ? { opacity: 1, y: 0 } : false}
+                  transition={{ duration: 0.4, ease: "easeOut" }}
                   key={msg.id}
-                  className={`flex gap-4 ${isUser ? "justify-end" : "justify-start"} ${!isUser ? "animate-in fade-in duration-500" : ""}`}
+                  className={`flex gap-4 ${isUser ? "justify-end" : "justify-start"}`}
                 >
                   {/* Avatar */}
                   {!isUser && (
@@ -305,13 +330,18 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                       <span className="text-xs font-bold font-mono">U</span>
                     </div>
                   )}
-                </div>
+                </motion.div>
               );
             })}
             
             {/* Thinking / Streaming Indicator */}
             {isLoading && (
-              <div className="flex gap-4 justify-start">
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="flex gap-4 justify-start"
+              >
                 <div className="w-7 h-7 rounded-lg border border-arivuIndigo/20 bg-arivuIndigo/10 flex items-center justify-center text-arivuIndigo shrink-0 mt-1 animate-pulse">
                   <Terminal className="w-4 h-4" />
                 </div>
@@ -319,10 +349,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                   <span className="w-1.5 h-1.5 rounded-full bg-arivuIndigo animate-bounce" style={{ animationDelay: "0ms" }}></span>
                   <span className="w-1.5 h-1.5 rounded-full bg-arivuIndigo animate-bounce" style={{ animationDelay: "150ms" }}></span>
                   <span className="w-1.5 h-1.5 rounded-full bg-arivuIndigo animate-bounce" style={{ animationDelay: "300ms" }}></span>
-                  <span>Synthesizing codebase context...</span>
+                  <span>{LOADING_STAGES[loadingStage]}</span>
                 </div>
-              </div>
+              </motion.div>
             )}
+            </AnimatePresence>
 
             <div ref={messagesEndRef} />
           </div>

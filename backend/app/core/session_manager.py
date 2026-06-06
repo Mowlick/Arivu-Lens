@@ -23,8 +23,11 @@ class SessionManager:
             "last_accessed": now,
             "chat_history": []
         }
-        with open(self._get_session_path(session_id), "w", encoding="utf-8") as f:
+        path = self._get_session_path(session_id)
+        tmp_path = path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
+        os.replace(tmp_path, path)
         return session_id
 
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
@@ -83,8 +86,17 @@ class SessionManager:
             session["chat_history"].append(msg)
             session["last_accessed"] = now
             
-            with open(self._get_session_path(session_id), "w", encoding="utf-8") as f:
+            # Generate title from first user message if not present
+            if role == "user" and not session.get("title"):
+                clean_content = content.replace("\n", " ")
+                session["title"] = clean_content[:40] + "..." if len(clean_content) > 40 else clean_content
+            
+            # Atomic write
+            path = self._get_session_path(session_id)
+            tmp_path = path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(session, f, indent=2)
+            os.replace(tmp_path, path)
             return True
         except Exception as e:
             # Safety Buffer requested by user

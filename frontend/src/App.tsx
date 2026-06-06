@@ -135,7 +135,7 @@ function App() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              query: "Based on the codebase files, suggest exactly 4 short questions a developer might ask about its architecture, modules, or APIs. Return ONLY a valid JSON array of objects with 'title' and 'desc'. Example: [{\"title\": \"Question\", \"desc\": \"Context\"}]",
+              query: "Based on the codebase files, suggest exactly 4 extremely short, punchy chat start options (max 3-4 words for title) instead of long questions. Return ONLY a valid JSON array of objects with 'title' and 'desc'. Example: [{\"title\": \"Explain Architecture\", \"desc\": \"Context\"}]",
               n_results: 10,
               history: [],
               use_graph: false,
@@ -242,20 +242,26 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-sync conversation history
+  // Auto-sync conversation history and refresh session list
   useEffect(() => {
     if (!workspacePath || messages.length === 0) return;
-    const syncInterval = setInterval(async () => {
+    const syncSession = async () => {
       try {
         await fetch(`${API_BASE}/workspace/sync`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ chat_history: messages.map(m => ({ role: m.role, content: m.content })) })
         });
+        
+        // Refresh sessions list so dropdown titles update from "Empty Session"
+        fetchSessions();
       } catch (e) {}
-    }, 30000);
-    return () => clearInterval(syncInterval);
-  }, [workspacePath, messages]);
+    };
+    
+    // Debounce saves by 2 seconds
+    const timer = setTimeout(syncSession, 2000);
+    return () => clearTimeout(timer);
+  }, [workspacePath, messages, fetchSessions]);
 
   const ingestDirectory = async (path: string) => {
     setDirPath(path);
@@ -866,7 +872,7 @@ function App() {
         {/* Input bar bottom */}
         {files.length > 0 && (
           <div className="p-5 dark:bg-[#07080b]/80 bg-white/80 backdrop-blur-md relative z-10">
-            <div className="max-w-3xl mx-auto border dark:border-white/5 border-gray-200 hover:dark:border-white/10 rounded-2xl dark:bg-[#0b0c10] bg-white shadow-combinedGlow p-3 flex flex-col gap-3 focus-within:border-arivuIndigo/40 transition">
+            <div className={`${centerTab === "code" ? "w-full" : "max-w-3xl mx-auto"} border dark:border-white/5 border-gray-200 hover:dark:border-white/10 rounded-2xl dark:bg-[#0b0c10] bg-white shadow-combinedGlow p-3 flex flex-col gap-3 focus-within:border-arivuIndigo/40 transition`}>
               {attachedFiles.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-1 px-1">
                   {attachedFiles.map(file => (

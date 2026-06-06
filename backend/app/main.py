@@ -151,11 +151,26 @@ def ingest_directory(payload: IngestPathRequest):
             files = get_file_list(path)
             total_files = len(files)
             
+            ast_processed = 0
+            fallback_processed = 0
+            failed = 0
+            
             for i, rel_path in enumerate(files):
                 yield json.dumps({"phase": 1, "message": f"Phase 1: Parsing file {i+1}/{total_files} ({rel_path})..."}) + "\n"
                 await asyncio.sleep(0.01)
-                file_chunks = chunk_file(path, rel_path)
-                all_chunks.extend(file_chunks)
+                try:
+                    file_chunks = chunk_file(path, rel_path)
+                    if len(file_chunks) == 0:
+                        failed += 1
+                    else:
+                        all_chunks.extend(file_chunks)
+                        if "type" in file_chunks[0]:
+                            ast_processed += 1
+                        else:
+                            fallback_processed += 1
+                except Exception as e:
+                    print(f"Failed completely on {rel_path}: {e}")
+                    failed += 1
                 
             chunks = all_chunks
             
@@ -165,7 +180,15 @@ def ingest_directory(payload: IngestPathRequest):
                     "message": "Ingestion completed, but no supported source code files were found.",
                     "files_count": 0,
                     "chunks_count": 0,
-                    "files": []
+                    "files": [],
+                    "analytics": {
+                        "files_scanned": total_files,
+                        "ast_processed": ast_processed,
+                        "fallback_processed": fallback_processed,
+                        "failed": failed,
+                        "chunks_created": 0,
+                        "embeddings_created": 0
+                    }
                 }) + "\n"
                 return
                 
@@ -185,7 +208,15 @@ def ingest_directory(payload: IngestPathRequest):
                 "message": f"Successfully ingested {len(files)} files into {len(chunks)} semantic chunks.",
                 "files_count": len(files),
                 "chunks_count": len(chunks),
-                "files": files
+                "files": files,
+                "analytics": {
+                    "files_scanned": total_files,
+                    "ast_processed": ast_processed,
+                    "fallback_processed": fallback_processed,
+                    "failed": failed,
+                    "chunks_created": len(chunks),
+                    "embeddings_created": len(chunks)
+                }
             }) + "\n"
         except Exception as e:
             yield json.dumps({"error": f"Ingestion failed: {str(e)}"}) + "\n"
@@ -237,10 +268,25 @@ def ingest_zip_file(file: UploadFile = File(...)):
             files = get_file_list(extract_path)
             total_files = len(files)
             
+            ast_processed = 0
+            fallback_processed = 0
+            failed = 0
+            
             for i, rel_path in enumerate(files):
                 yield json.dumps({"phase": 1, "message": f"Phase 1: Parsing file {i+1}/{total_files} ({rel_path})..."}) + "\n"
-                file_chunks = chunk_file(extract_path, rel_path)
-                all_chunks.extend(file_chunks)
+                try:
+                    file_chunks = chunk_file(extract_path, rel_path)
+                    if len(file_chunks) == 0:
+                        failed += 1
+                    else:
+                        all_chunks.extend(file_chunks)
+                        if "type" in file_chunks[0]:
+                            ast_processed += 1
+                        else:
+                            fallback_processed += 1
+                except Exception as e:
+                    print(f"Failed completely on {rel_path}: {e}")
+                    failed += 1
                 
             chunks = all_chunks
             
@@ -250,7 +296,15 @@ def ingest_zip_file(file: UploadFile = File(...)):
                     "message": "ZIP extraction done, but no supported files found.",
                     "files_count": 0,
                     "chunks_count": 0,
-                    "files": []
+                    "files": [],
+                    "analytics": {
+                        "files_scanned": total_files,
+                        "ast_processed": ast_processed,
+                        "fallback_processed": fallback_processed,
+                        "failed": failed,
+                        "chunks_created": 0,
+                        "embeddings_created": 0
+                    }
                 }) + "\n"
                 return
                 
@@ -266,7 +320,15 @@ def ingest_zip_file(file: UploadFile = File(...)):
                 "message": f"Successfully extracted and ingested ZIP. Indexed {len(files)} files into {len(chunks)} chunks.",
                 "files_count": len(files),
                 "chunks_count": len(chunks),
-                "files": files
+                "files": files,
+                "analytics": {
+                    "files_scanned": total_files,
+                    "ast_processed": ast_processed,
+                    "fallback_processed": fallback_processed,
+                    "failed": failed,
+                    "chunks_created": len(chunks),
+                    "embeddings_created": len(chunks)
+                }
             }) + "\n"
         except Exception as e:
             yield json.dumps({"error": f"ZIP parsing failed: {str(e)}"}) + "\n"
