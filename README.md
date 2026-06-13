@@ -2,6 +2,9 @@
 
 Compi-Lens is an enterprise-grade, privacy-first **Local Codebase Search & AI engineering assistant**. It allows you to point the app to a local directory or drag-and-drop a ZIP folder, processes and indexes the files into a local semantic vector database, and lets you chat with an open-source model—**all without a single byte of your code ever leaving your machine**.
 
+![Compi-Lens Home Screen](docs/images/empty_state.png)
+![Compi-Lens Active Index Workspace](docs/images/workspace_loaded.png)
+
 ---
 
 ## 🎨 Upgraded 3D Codebase Architecture Explorer
