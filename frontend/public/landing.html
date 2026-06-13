@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arivu-Lens – Desktop Installation & Setup</title>
+  
+  <!-- Tailwind CSS & Google Fonts -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet" />
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            darkBg: "#030306",
+            darkPanel: "#07080b",
+            darkCard: "#0c0d12",
+            arivuEmerald: {
+              light: "#34d399",
+              DEFAULT: "#10b981",
+              dark: "#047857",
+            },
+            arivuIndigo: {
+              light: "#818cf8",
+              DEFAULT: "#6366f1",
+              dark: "#4338ca",
+            }
+          },
+          boxShadow: {
+            emeraldGlow: "0 0 25px rgba(16, 185, 129, 0.15)",
+            indigoGlow: "0 0 25px rgba(99, 102, 241, 0.15)",
+            combinedGlow: "0 0 35px rgba(99, 102, 241, 0.1) , 0 0 35px rgba(16, 185, 129, 0.1)",
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #030306;
+      background-image: 
+        radial-gradient(circle at 50% -20%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.04) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(99, 102, 241, 0.04) 0%, transparent 40%);
+    }
+
+    /* Orbiting Rings Animations matching App.tsx */
+    .orbit-ring {
+      border: 1px solid rgba(16, 185, 129, 0.08);
+      border-radius: 50%;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      animation: rotateOrbit linear infinite;
+    }
+
+    @keyframes rotateOrbit {
+      from { transform: translate(-50%, -50%) rotate(0deg); }
+      to { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+
+    .glow-glow {
+      box-shadow: 0 0 45px rgba(16, 185, 129, 0.25);
+    }
+    .glow-violet {
+      box-shadow: 0 0 45px rgba(139, 92, 246, 0.25);
+    }
+
+    /* Glassmorphic card styling matching Arivu-Lens app */
+    .arivu-glass {
+      background: rgba(10, 11, 15, 0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .arivu-glass-hover:hover {
+      border-color: rgba(16, 185, 129, 0.15);
+      box-shadow: 0 0 30px rgba(16, 185, 129, 0.02);
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(4, 4, 6, 0.5);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(16, 185, 129, 0.3);
+    }
+  </style>
+</head>
+<body class="text-gray-200 min-h-screen overflow-y-auto antialiased">
+
+  <!-- Diagonal background glow overlays -->
+  <div class="absolute right-[10%] top-[5%] w-[450px] h-[450px] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none"></div>
+  <div class="absolute left-[10%] bottom-[10%] w-[450px] h-[450px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none"></div>
+
+  <!-- Main Container -->
+  <div class="max-w-6xl mx-auto px-6 py-8 relative z-10 flex flex-col min-h-screen">
+    
+    <!-- HEADER BAR -->
+    <header class="flex flex-col sm:flex-row items-center justify-between gap-4 pb-8 mb-6 border-b border-white/5">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-arivuIndigo to-arivuEmerald flex items-center justify-center text-white glow-glow">
+          <i data-lucide="shield-check" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-black tracking-wider uppercase bg-clip-text text-transparent bg-gradient-to-r from-gray-100 to-gray-400">
+            Arivu-Lens
+          </h1>
+          <p class="text-[10px] text-gray-500 font-mono tracking-wide">
+            Privacy-First Codebase Intelligence
+          </p>
+        </div>
+      </div>
+      
+      <!-- System Badges matching the main application -->
+      <div class="flex flex-wrap items-center gap-3">
+        <!-- Live Ollama connection status -->
+        <div class="flex items-center gap-2 px-3 py-1 rounded-full border border-white/5 bg-[#0c0d12] text-[10px] font-mono shadow-sm">
+          <span id="health-dot" class="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse"></span>
+          <span class="text-gray-400">Ollama</span>
+          <span class="text-gray-600">|</span>
+          <span id="health-status" class="text-yellow-400 font-semibold">Checking...</span>
+        </div>
+        <div class="flex items-center gap-2 px-3 py-1 rounded-full border border-white/5 bg-[#0c0d12] text-[10px] font-mono shadow-sm">
+          <span class="w-1.5 h-1.5 rounded-full bg-arivuEmerald animate-pulse"></span>
+          <span class="text-arivuEmerald-light font-semibold">WebGPU Ready</span>
+        </div>
+        <div class="w-7 h-7 rounded-full border border-white/10 bg-[#0c0d12] text-xs font-extrabold flex items-center justify-center text-arivuIndigo select-none">
+          K
+        </div>
+      </div>
+    </header>
+
+    <!-- HERO SECTION & MAIN LAYOUT -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start my-auto">
+      
+      <!-- LEFT: Orbital visualizer & core application info -->
+      <div class="lg:col-span-5 flex flex-col items-center text-center lg:items-start lg:text-left space-y-6 pt-4">
+        
+        <!-- Interactive Orbit Graphics -->
+        <div class="relative w-72 h-72 mb-4 flex items-center justify-center select-none mx-auto lg:mx-0">
+          <div class="orbit-ring w-[240px] h-[140px] opacity-20" style="animation-duration: 35s;"></div>
+          <div class="orbit-ring w-[190px] h-[110px] opacity-40" style="animation-duration: 25s; animation-direction: reverse;"></div>
+          <div class="orbit-ring w-[140px] h-[80px] opacity-60" style="animation-duration: 18s;"></div>
+          
+          <div class="absolute top-[18%] left-[20%] w-7 h-7 rounded-lg border border-white/5 bg-[#0b0c10] flex items-center justify-center text-arivuIndigo/70 text-xs font-mono glow-violet">
+            &lt;/&gt;
+          </div>
+          <div class="absolute top-[18%] right-[20%] w-7 h-7 rounded-lg border border-white/5 bg-[#0b0c10] flex items-center justify-center text-arivuEmerald-light/70 text-xs font-mono glow-glow">
+            &gt;_
+          </div>
+          <div class="absolute bottom-[10%] left-[45%] w-7 h-7 rounded-lg border border-white/5 bg-[#0b0c10] flex items-center justify-center text-gray-500 text-xs">
+            <i data-lucide="terminal" class="w-3.5 h-3.5"></i>
+          </div>
+          
+          <!-- Logo Card -->
+          <div class="w-24 h-24 rounded-3xl border border-white/5 bg-[#0a0b10] flex items-center justify-center shadow-emeraldGlow z-10 glow-glow relative overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-br from-arivuEmerald/20 to-arivuIndigo/20 opacity-50"></div>
+            <span class="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-arivuEmerald to-arivuIndigo-light z-10 font-sans tracking-tighter">A</span>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <h2 class="text-3xl font-extrabold tracking-tight text-white lg:text-4xl leading-tight">
+            Your Codebase.<br />Your Intelligence.
+          </h2>
+          <div class="text-arivuEmerald-light font-black tracking-widest text-xs uppercase bg-emerald-500/10 px-3 py-1 rounded-md inline-block">
+            100% Local. 100% Private.
+          </div>
+          <p class="text-sm text-gray-400 max-w-md leading-relaxed font-mono">
+            Arivu-Lens operates completely offline, processing embeddings, building relational code graphs, and performing reasoning on your own hardware. No cloud keys, no code telemetry, no leaks.
+          </p>
+        </div>
+
+        <!-- Application Features -->
+        <div class="space-y-3 w-full max-w-sm pt-2">
+          <div class="flex items-center gap-3 text-xs text-gray-300">
+            <i data-lucide="shield-check" class="w-4 h-4 text-arivuEmerald shrink-0"></i>
+            <span>Privacy Guard: All data stays on your machine</span>
+          </div>
+          <div class="flex items-center gap-3 text-xs text-gray-300">
+            <i data-lucide="git-branch" class="w-4 h-4 text-arivuIndigo shrink-0"></i>
+            <span>AST Parsing & Semantic retrieval context</span>
+          </div>
+          <div class="flex items-center gap-3 text-xs text-gray-300">
+            <i data-lucide="database" class="w-4 h-4 text-arivuEmerald shrink-0"></i>
+            <span>Local ChromaDB Vector Index Store</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Interactive setup installer panel -->
+      <div class="lg:col-span-7 arivu-glass rounded-2xl p-6 md:p-8 shadow-combinedGlow space-y-6">
+        
+        <!-- Tab selector headers -->
+        <div class="flex border-b border-white/5 gap-6 text-sm font-mono pb-2">
+          <button id="tab-auto" onclick="switchTab('auto')" class="pb-3 border-b-2 border-arivuIndigo text-arivuIndigo transition font-semibold flex items-center gap-2">
+            <i data-lucide="rocket" class="w-4 h-4"></i>
+            One-Click Setup
+          </button>
+          <button id="tab-manual" onclick="switchTab('manual')" class="pb-3 border-b-2 border-transparent text-gray-500 hover:text-gray-300 transition font-semibold flex items-center gap-2">
+            <i data-lucide="settings" class="w-4 h-4"></i>
+            Manual Setup
+          </button>
+        </div>
+
+        <!-- TAB CONTENT: AUTOMATIC SETUP -->
+        <div id="content-auto" class="space-y-6">
+          <div class="bg-arivuIndigo/10 border border-arivuIndigo/20 rounded-xl p-4 space-y-2">
+            <h4 class="text-sm font-bold text-arivuIndigo-light flex items-center gap-2">
+              <i data-lucide="info" class="w-4 h-4"></i>
+              Automatic Setup & Launch Script (Recommended)
+            </h4>
+            <p class="text-xs text-gray-400 font-mono leading-relaxed">
+              We've created a custom batch script in the root directory of this project called <code class="bg-black/30 text-white px-1.5 py-0.5 rounded">install.bat</code>. It installs all python & npm packages and starts both servers simultaneously.
+            </p>
+          </div>
+
+          <div class="space-y-4">
+            <h3 class="text-xs font-mono uppercase tracking-wider text-gray-500">How to launch:</h3>
+            
+            <div class="space-y-4">
+              <div class="flex gap-4">
+                <div class="w-6 h-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs font-mono font-bold shrink-0 text-arivuIndigo">1</div>
+                <div>
+                  <h4 class="text-sm font-bold text-white">Ensure prerequisites are met</h4>
+                  <p class="text-xs text-gray-400 font-mono mt-1">Make sure you have Node.js (v18+) and Python (3.9+) installed.</p>
+                </div>
+              </div>
+
+              <div class="flex gap-4">
+                <div class="w-6 h-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs font-mono font-bold shrink-0 text-arivuIndigo">2</div>
+                <div class="w-full">
+                  <h4 class="text-sm font-bold text-white">Run the installation script</h4>
+                  <p class="text-xs text-gray-400 font-mono mt-1 mb-2">Double click the script or execute it from PowerShell / Command Prompt:</p>
+                  
+                  <div class="flex items-center justify-between bg-black/40 border border-white/5 rounded-lg p-3 font-mono text-xs text-arivuEmerald-light w-full">
+                    <span>.\install.bat</span>
+                    <button onclick="copyCmd('.\\install.bat', this)" class="text-gray-400 hover:text-white transition flex items-center gap-1.5">
+                      <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                      <span>Copy</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex gap-4">
+                <div class="w-6 h-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs font-mono font-bold shrink-0 text-arivuIndigo">3</div>
+                <div>
+                  <h4 class="text-sm font-bold text-white">Access application</h4>
+                  <p class="text-xs text-gray-400 font-mono mt-1">The script will automatically configure all packages and open the desktop launcher. Alternatively, navigate directly to <a href="http://localhost:5173" class="text-arivuIndigo hover:underline">http://localhost:5173</a>.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB CONTENT: MANUAL SETUP -->
+        <div id="content-manual" class="space-y-6 hidden">
+          <div class="space-y-6">
+            
+            <!-- Step 1: Ollama Setup -->
+            <div class="space-y-3">
+              <div class="flex items-center gap-2 text-sm font-bold text-white">
+                <span class="w-5 h-5 rounded bg-arivuIndigo/25 text-arivuIndigo flex items-center justify-center text-xs font-mono">1</span>
+                <span>Ollama Models Pull</span>
+              </div>
+              <p class="text-xs text-gray-400 font-mono">Make sure Ollama is installed and running, then pull the optimization models:</p>
+              
+              <div class="space-y-2">
+                <div class="flex items-center justify-between bg-black/40 border border-white/5 rounded-lg p-3 font-mono text-xs text-arivuEmerald-light">
+                  <span>ollama pull nomic-embed-text</span>
+                  <button onclick="copyCmd('ollama pull nomic-embed-text', this)" class="text-gray-400 hover:text-white transition flex items-center gap-1">
+                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+                <div class="flex items-center justify-between bg-black/40 border border-white/5 rounded-lg p-3 font-mono text-xs text-arivuEmerald-light">
+                  <span>ollama pull qwen2.5-coder:7b</span>
+                  <button onclick="copyCmd('ollama pull qwen2.5-coder:7b', this)" class="text-gray-400 hover:text-white transition flex items-center gap-1">
+                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 2: Backend Setup -->
+            <div class="space-y-3">
+              <div class="flex items-center gap-2 text-sm font-bold text-white">
+                <span class="w-5 h-5 rounded bg-arivuIndigo/25 text-arivuIndigo flex items-center justify-center text-xs font-mono">2</span>
+                <span>Python API Backend Setup</span>
+              </div>
+              <p class="text-xs text-gray-400 font-mono">Open a terminal in the <code class="bg-black/30 px-1 py-0.5 rounded text-white">backend</code> folder to setup dependencies and launch on port 11411:</p>
+              
+              <div class="space-y-2">
+                <div class="flex items-center justify-between bg-black/40 border border-white/5 rounded-lg p-3 font-mono text-xs text-arivuEmerald-light">
+                  <span>cd backend && pip install -r requirements.txt</span>
+                  <button onclick="copyCmd('cd backend && pip install -r requirements.txt', this)" class="text-gray-400 hover:text-white transition flex items-center gap-1">
+                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+                <div class="flex items-center justify-between bg-black/40 border border-white/5 rounded-lg p-3 font-mono text-xs text-arivuEmerald-light">
+                  <span>uvicorn app.main:app --reload --port 11411</span>
+                  <button onclick="copyCmd('uvicorn app.main:app --reload --port 11411', this)" class="text-gray-400 hover:text-white transition flex items-center gap-1">
+                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 3: Frontend Setup -->
+            <div class="space-y-3">
+              <div class="flex items-center gap-2 text-sm font-bold text-white">
+                <span class="w-5 h-5 rounded bg-arivuIndigo/25 text-arivuIndigo flex items-center justify-center text-xs font-mono">3</span>
+                <span>React Vite Frontend Setup</span>
+              </div>
+              <p class="text-xs text-gray-400 font-mono">Open another terminal in the <code class="bg-black/30 px-1 py-0.5 rounded text-white">frontend</code> folder to install and run the development server:</p>
+              
+              <div class="space-y-2">
+                <div class="flex items-center justify-between bg-black/40 border border-white/5 rounded-lg p-3 font-mono text-xs text-arivuEmerald-light">
+                  <span>cd frontend && npm install</span>
+                  <button onclick="copyCmd('cd frontend && npm install', this)" class="text-gray-400 hover:text-white transition flex items-center gap-1">
+                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+                <div class="flex items-center justify-between bg-black/40 border border-white/5 rounded-lg p-3 font-mono text-xs text-arivuEmerald-light">
+                  <span>npm run dev</span>
+                  <button onclick="copyCmd('npm run dev', this)" class="text-gray-400 hover:text-white transition flex items-center gap-1">
+                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Continue Button -->
+        <div class="pt-4 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p class="text-[11px] text-gray-500 font-mono">
+            * Once both servers are active, open the address below to use the client.
+          </p>
+          <a href="/" class="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-arivuIndigo to-arivuEmerald text-white font-bold text-xs tracking-wider uppercase flex items-center justify-center gap-2 hover:shadow-indigoGlow transition duration-200">
+            <span>Enter Application</span>
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </a>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="mt-12 pt-6 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between text-[11px] text-gray-600 font-mono gap-4">
+      <div>Arivu-Lens v1.0.0 · Local Codebase Intelligence</div>
+      <div class="flex gap-4">
+        <a href="https://ollama.com" target="_blank" class="hover:text-gray-400 transition">Ollama</a>
+        <span>·</span>
+        <a href="https://tauri.app" target="_blank" class="hover:text-gray-400 transition">Tauri Desktop</a>
+      </div>
+    </footer>
+
+  </div>
+
+  <script>
+    // Tab switching controller
+    function switchTab(tab) {
+      const btnAuto = document.getElementById('tab-auto');
+      const btnManual = document.getElementById('tab-manual');
+      const contentAuto = document.getElementById('content-auto');
+      const contentManual = document.getElementById('content-manual');
+
+      if (tab === 'auto') {
+        btnAuto.className = "pb-3 border-b-2 border-arivuIndigo text-arivuIndigo transition font-semibold flex items-center gap-2";
+        btnManual.className = "pb-3 border-b-2 border-transparent text-gray-500 hover:text-gray-300 transition font-semibold flex items-center gap-2";
+        contentAuto.classList.remove('hidden');
+        contentManual.classList.add('hidden');
+      } else {
+        btnManual.className = "pb-3 border-b-2 border-arivuIndigo text-arivuIndigo transition font-semibold flex items-center gap-2";
+        btnAuto.className = "pb-3 border-b-2 border-transparent text-gray-500 hover:text-gray-300 transition font-semibold flex items-center gap-2";
+        contentManual.classList.remove('hidden');
+        contentAuto.classList.add('hidden');
+      }
+    }
+
+    // Command copying function with inline feedback
+    function copyCmd(text, button) {
+      navigator.clipboard.writeText(text).then(() => {
+        const originalContent = button.innerHTML;
+        button.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5 text-arivuEmerald"></i><span class="text-arivuEmerald text-[10px]">Copied</span>';
+        lucide.createIcons();
+        setTimeout(() => {
+          button.innerHTML = originalContent;
+          lucide.createIcons();
+        }, 2000);
+      });
+    }
+
+    // Live Health checker to pull state from Backend
+    async function checkBackendHealth() {
+      const dot = document.getElementById('health-dot');
+      const statusText = document.getElementById('health-status');
+      
+      try {
+        const response = await fetch('http://127.0.0.1:11411/api/health');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.ollama_connection === 'online') {
+            dot.className = 'w-1.5 h-1.5 rounded-full bg-arivuEmerald animate-pulse';
+            statusText.className = 'text-arivuEmerald-light font-semibold';
+            statusText.innerText = 'Online';
+          } else {
+            dot.className = 'w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse';
+            statusText.className = 'text-yellow-400 font-semibold';
+            statusText.innerText = 'Ollama Offline';
+          }
+        } else {
+          throw new Error('API down');
+        }
+      } catch (e) {
+        dot.className = 'w-1.5 h-1.5 rounded-full bg-red-500';
+        statusText.className = 'text-red-400 font-semibold';
+        statusText.innerText = 'Offline';
+      }
+    }
+
+    // Initialize icons and health check loop
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      checkBackendHealth();
+      setInterval(checkBackendHealth, 5000);
+    });
+  </script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { X, Copy, Check, FileCode2, Loader2 } from "lucide-react";
+import { API_BASE } from "../App";
 
 interface CodeViewerProps {
   filePath: string | null;
@@ -7,7 +8,6 @@ interface CodeViewerProps {
   onClose: () => void;
 }
 
-const API_BASE = "http://localhost:11411/api";
 
 export const CodeViewer: React.FC<CodeViewerProps> = ({ filePath, isDarkMode, onClose }) => {
   const [content, setContent] = useState<string>("");

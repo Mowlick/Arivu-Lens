@@ -4,9 +4,38 @@ Compi-Lens is an enterprise-grade, privacy-first **Local Codebase Search & AI en
 
 ---
 
+## 🎨 Upgraded 3D Codebase Architecture Explorer
+
+Compi-Lens includes a state-of-the-art **3D Codebase Architecture Graph** that visualizes repository structure, file hierarchies, and reference dependencies as a live network:
+
+### 1. View Modes (Architecture vs. Exploration)
+* **Architecture View**: A high-level view that filters out files and functions, showing only root packages, folders, and external libraries to expose architectural boundaries clearly.
+* **Exploration View**: A granular visualizer showcasing folders, files, classes, methods, and code chunks.
+
+### 2. Selected Node Inspector Panel
+* Single-click any node to pin its inspector card in the dashboard.
+* Displays name, type, and source paths.
+* **Suggested Layer**: Auto-inferred layers (API Layer, Service Layer, Data Layer, UI Layer) based on folder naming heuristics.
+* **Aggregated Outgoing Dependencies**: Lists top parent folder dependencies (aggregated dynamically to clean visual representation).
+* **Dependents & Dependencies**: Show direct incoming and outgoing links.
+
+### 3. Dependency-Chain Focus Mode
+* Double BFS traversal highlighting the entire recursive upstream caller tree and downstream dependencies of the selected node, fading out unrelated nodes to `15%`.
+
+### 4. Interactive Navigation & Polish
+* **Strict Labels**: Always-visible high-resolution monospace labels for packages, top-level directories, searched items, and selected nodes.
+* **Soft Folder Glows**: Translucent double-sided spheres wrapping folder nodes to represent directory volume and containment.
+* **Jump Map**: Quick sidebar jumping links to root folders and packages.
+* **Diagnostics & Diagnostics**: Live counts of Packages, Folders, Files, Classes, Functions, and **Circular Cycles** (with direct loop path readouts).
+
+### 5. Render safeguards
+* Automatically scales graphics and defaults to high-level views when graph node density exceeds 2000 nodes to keep WebGL frame rates fast and smooth.
+
+---
+
 ## 🛠️ Technology Stack
 
-* **Frontend**: React (TypeScript), Vite, Tailwind CSS, Lucide Icons.
+* **Frontend**: React (TypeScript), Vite, Tailwind CSS, Lucide Icons, Three.js, React-Force-Graph-3D.
 * **Backend API**: FastAPI (Python), Uvicorn.
 * **Vector Store**: ChromaDB (Local Persistent Storage).
 * **Embeddings Model**: `nomic-embed-text` (running locally via Ollama).
@@ -76,3 +105,4 @@ Compi-Lens runs entirely within your localhost environment:
 * No external API keys required.
 * Zero external network calls are made.
 * Code indexing, chunking, embedding, vector search, and model inference are strictly local.
+

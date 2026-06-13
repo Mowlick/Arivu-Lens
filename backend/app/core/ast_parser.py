@@ -1,5 +1,26 @@
 import os
+import keyword
 from typing import List, Dict, Any
+
+# Generic keywords, python keywords, and common frontend/backend variable names
+BLACKLISTED_DEPENDENCIES = set(keyword.kwlist) | {
+    # JS/TS Keywords/Globals
+    "const", "let", "var", "function", "class", "return", "import", "export", 
+    "default", "from", "extends", "implements", "interface", "type", "string", 
+    "number", "boolean", "any", "void", "true", "false", "null", "undefined",
+    "console", "log", "error", "warn", "info", "debug", "window", "document",
+    "process", "env", "module", "require", "exports", "Object", "Array", "Promise",
+    "JSON", "stringify", "parse", "forEach", "length", "split", "join", "replace",
+    # Python Globals/Common terms
+    "self", "args", "kwargs", "print", "logger", "logging", "None", "dict", "list",
+    "set", "tuple", "str", "int", "float", "bool", "open", "read", "write", "close",
+    # Generic short/noise variables
+    "data", "item", "items", "value", "values", "key", "keys", "name", "id", "type",
+    "state", "props", "event", "query", "request", "response", "result", "results",
+    "config", "settings", "options", "params", "body", "headers", "status",
+    "message", "text", "file", "path", "dir", "index", "count", "size", "width",
+    "height", "top", "left", "right", "bottom", "date", "time", "user", "admin"
+}
 
 try:
     from tree_sitter import Parser  # type: ignore
@@ -53,7 +74,8 @@ class CodeGraphParser:
         chunks = []
         
         # Traverse AST node children recursively to map code bounds
-        def traverse(node):
+        def traverse(node, current_class=None):
+            class_context = current_class
             if node.type in ['function_definition', 'class_definition', 'method_definition', 'generator_definition']:
                 start_byte = node.start_byte
                 end_byte = node.end_byte
@@ -62,6 +84,9 @@ class CodeGraphParser:
                 # Extract node identifier string (e.g. name of function or class)
                 name_node = node.child_by_field_name('name')
                 name = content[name_node.start_byte:name_node.end_byte] if name_node else "anonymous"
+
+                if node.type == 'class_definition':
+                    class_context = name
 
                 chunks.append({
                     "id": f"{file_path}_{name}_{node.start_point[0]}",
@@ -75,28 +100,56 @@ class CodeGraphParser:
                         "chunk_index": len(chunks),
                         "start_line": node.start_point[0] + 1,
                         "end_line": node.end_point[0] + 1,
-                        "dependencies": self._extract_dependencies(node, content)
+                        "dependencies": self._extract_dependencies(node, content),
+                        "parent_class": current_class if node.type != 'class_definition' else None,
+                        "type": node.type
                     }
                 })
             
             for child in node.children:
-                traverse(child)
+                traverse(child, class_context)
 
         traverse(root_node)
         return chunks
 
-    def _extract_dependencies(self, node, content: str) -> List[str]:
+    def _extract_dependencies(self, node, content: str) -> List[Dict[str, str]]:
         """Scans the syntax node for variables, imports, or external calls."""
         deps = []
+        seen = set()
         
-        def find_identifiers(n):
-            if n.type in ['call', 'identifier', 'import_from_statement', 'import_statement']:
+        def find_identifiers(n, relation="reference"):
+            nonlocal deps, seen
+            current_relation = relation
+            
+            if n.type in ('import_statement', 'import_from_statement'):
+                # Extract string literal path source for external imports (e.g., from 'react')
+                source_str = None
+                for child in n.children:
+                    if child.type in ('string', 'string_literal'):
+                        val = content[child.start_byte:child.end_byte].strip('\'"')
+                        if val and not val.startswith('.'):
+                            source_str = val.split('/')[0]
+                            break
+                if source_str and source_str not in seen:
+                    deps.append({"symbol": source_str, "relation": "external_import"})
+                    seen.add(source_str)
+                current_relation = "import"
+            elif n.type == 'call':
+                current_relation = "call"
+            elif n.type == 'class_definition':
+                current_relation = "inheritance"
+
+            if n.type == 'identifier':
                 name = content[n.start_byte:n.end_byte]
-                # Filter noise and short symbols to keep clean graph references
-                if len(name) > 3 and name not in deps and not name.startswith(('"', "'")):
-                    deps.append(name)
+                if (len(name) > 3 and 
+                    name not in seen and 
+                    name not in BLACKLISTED_DEPENDENCIES and 
+                    not name.startswith(('"', "'"))):
+                    deps.append({"symbol": name, "relation": current_relation})
+                    seen.add(name)
+                    
             for c in n.children:
-                find_identifiers(c)
+                find_identifiers(c, current_relation)
                 
         find_identifiers(node)
         return deps

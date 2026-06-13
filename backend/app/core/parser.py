@@ -1,8 +1,11 @@
 import os
-from typing import List, Dict, Any, Tuple
+import logging
+from typing import List, Dict, Any, Tuple, Optional
 from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
 from app.config import settings
 from app.core.ast_parser import CodeGraphParser
+
+logger = logging.getLogger(__name__)
 
 # Global syntax parser instance
 ast_parser = CodeGraphParser()
@@ -25,9 +28,17 @@ EXTENSION_TO_LANGUAGE = {
     ".md": Language.MARKDOWN,
 }
 
+# Encodings to attempt when reading a file, in order of preference
+ENCODING_ATTEMPTS = ["utf-8", "utf-8-sig", "latin-1", "cp1252", "ascii"]
+
+
 def should_ignore(path: str, root_dir: str) -> bool:
-    """Check if the file or directory should be ignored during parsing."""
-    rel_path = os.path.relpath(path, root_dir)
+    """Returns True if the path (file or dir) should be skipped during traversal."""
+    try:
+        rel_path = os.path.relpath(path, root_dir)
+    except ValueError:
+        # On Windows, relpath can fail across drives
+        return True
     if rel_path == ".":
         return False
     parts = os.path.normpath(rel_path).split(os.sep)
@@ -36,104 +47,123 @@ def should_ignore(path: str, root_dir: str) -> bool:
             return True
     return False
 
+
 def get_file_list(directory: str) -> List[str]:
-    """Scan directory and return a list of supported files with relative paths."""
+    """Recursively scans a directory and returns relative paths of supported source files."""
     file_list = []
     abs_root = os.path.abspath(directory)
-    
+
     for root, dirs, files in os.walk(abs_root):
-        # Filter directories in-place to avoid traversing ignored ones
-        dirs[:] = [d for d in dirs if not should_ignore(os.path.join(root, d), abs_root)]
-        
+        # Prune ignored subdirectories in-place so os.walk skips them entirely
+        dirs[:] = [
+            d for d in dirs
+            if not should_ignore(os.path.join(root, d), abs_root)
+        ]
+
         for file in files:
             file_path = os.path.join(root, file)
             rel_path = os.path.relpath(file_path, abs_root)
             ext = os.path.splitext(file)[1].lower()
-            
-            if ext in settings.SUPPORTED_EXTENSIONS and not should_ignore(file_path, abs_root):
-                file_list.append(rel_path)
-                
+
+            if ext not in settings.SUPPORTED_EXTENSIONS:
+                logger.debug(f"[SKIP - unsupported ext] {rel_path}")
+                continue
+
+            if should_ignore(file_path, abs_root):
+                logger.debug(f"[SKIP - ignored path] {rel_path}")
+                continue
+
+            file_list.append(rel_path)
+
+    logger.info(f"[SCAN] Found {len(file_list)} supported files in {directory}")
     return file_list
 
-def chunk_file(base_dir: str, rel_path: str) -> List[Dict[str, Any]]:
-    """Reads a file and splits it into logical, language-aware chunks with metadata."""
-    abs_path = os.path.abspath(os.path.join(base_dir, rel_path))
-    ext = os.path.splitext(rel_path)[1].lower()
-    
-    content = None
-    encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
-    
-    for enc in encodings:
+
+def _read_file(abs_path: str, rel_path: str) -> Optional[str]:
+    """
+    Attempts to read a file using multiple encodings.
+    Returns the file content as a string, or None on complete failure.
+    """
+    for enc in ENCODING_ATTEMPTS:
         try:
-            with open(abs_path, 'r', encoding=enc) as f:
+            with open(abs_path, "r", encoding=enc, errors="strict") as f:
                 content = f.read()
-            # If successful, print which encoding was used
-            print(f"[ENCODING] {rel_path} -> {enc}")
-            break
+            logger.debug(f"[READ] {rel_path} → encoding={enc}")
+            return content
         except UnicodeDecodeError:
             continue
-        except Exception as e:
-            print(f"[ERROR] Failed to read {rel_path}: {e}")
-            return []
-            
-    if content is None:
-        print(f"[FAILED - Unreadable] Could not decode {rel_path} with supported encodings.")
-        return []
-        
-    if not content.strip():
-        print(f"[WARNING - Empty] {rel_path} contains no readable text.")
-        return []
+        except PermissionError:
+            logger.warning(f"[SKIP - permission denied] {rel_path}")
+            return None
+        except FileNotFoundError:
+            logger.warning(f"[SKIP - file not found] {rel_path}")
+            return None
+        except OSError as e:
+            logger.warning(f"[SKIP - OS error] {rel_path}: {e}")
+            return None
 
-    # 1. Structural AST parsing for supported languages
-    if ext in ['.py', '.js', '.jsx', '.ts', '.tsx']:
-        try:
-            ast_chunks = ast_parser.parse_structure(rel_path, content)
-            if ast_chunks and len(ast_chunks) > 0:
-                print(f"[SUCCESS - AST] Parsed {rel_path} -> {len(ast_chunks)} chunks")
-                return ast_chunks
-        except Exception as e:
-            print(f"[RECOVERY] AST parsing failed on {rel_path}, falling back to semantic splits: {e}")
-        
-    lang = EXTENSION_TO_LANGUAGE.get(ext)
-    
+    # Last-resort: read with error replacement to capture at least something
+    try:
+        with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        logger.warning(f"[READ - lossy fallback] {rel_path}: some characters replaced")
+        return content
+    except Exception as e:
+        logger.error(f"[FAILED - unreadable] {rel_path}: {e}")
+        return None
+
+
+def _plain_text_chunks(
+    content: str,
+    rel_path: str,
+    ext: str,
+    lang: Optional[Language],
+) -> List[Dict[str, Any]]:
+    """
+    Splits content using RecursiveCharacterTextSplitter with optional language awareness.
+    This is the fallback path when AST parsing is unavailable or fails.
+    """
     if lang:
-        splitter = RecursiveCharacterTextSplitter.from_language(
-            language=lang,
-            chunk_size=1500,
-            chunk_overlap=200
-        )
+        try:
+            splitter = RecursiveCharacterTextSplitter.from_language(
+                language=lang,
+                chunk_size=1500,
+                chunk_overlap=200,
+            )
+        except Exception as e:
+            logger.warning(f"[FALLBACK] Language splitter failed for {ext}, using generic: {e}")
+            splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
     else:
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1500,
-            chunk_overlap=200
-        )
-        
-    # Split content and obtain structural chunks
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
+
     documents = splitter.create_documents(
         texts=[content],
-        metadatas=[{"file_path": rel_path, "language": lang.value if lang else "text", "file_name": os.path.basename(rel_path)}]
+        metadatas=[{
+            "file_path": rel_path,
+            "language": lang.value if lang else "text",
+            "file_name": os.path.basename(rel_path),
+        }],
     )
-    
+
+    lines = content.split("\n")
     chunks = []
     for idx, doc in enumerate(documents):
-        # Identify approximate start/end lines for references
         snippet = doc.page_content
-        lines = content.split('\n')
         start_line = 1
-        
-        # Simple heuristic to find line numbers
+
+        # Best-effort line number estimation
         try:
-            # Look for snippet starting substring
-            first_few_chars = snippet[:100].split('\n')[0].strip()
-            for line_idx, line in enumerate(lines):
-                if first_few_chars in line:
-                    start_line = line_idx + 1
-                    break
+            first_line = snippet[:120].split("\n")[0].strip()
+            if first_line:
+                for line_idx, line in enumerate(lines):
+                    if first_line in line:
+                        start_line = line_idx + 1
+                        break
         except Exception:
             pass
-            
-        end_line = start_line + snippet.count('\n')
-        
+
+        end_line = start_line + snippet.count("\n")
+
         chunks.append({
             "content": snippet,
             "metadata": {
@@ -142,24 +172,90 @@ def chunk_file(base_dir: str, rel_path: str) -> List[Dict[str, Any]]:
                 "language": lang.value if lang else "text",
                 "chunk_index": idx,
                 "start_line": start_line,
-                "end_line": end_line
-            }
+                "end_line": end_line,
+            },
         })
-        
-    if len(chunks) == 0:
-        print(f"[WARNING - Empty] Fallback chunker produced 0 chunks for {rel_path}")
-    else:
-        print(f"[RECOVERY - Fallback] Used text chunker on {rel_path} -> {len(chunks)} chunks")
-        
+
     return chunks
 
+
+def chunk_file(base_dir: str, rel_path: str) -> List[Dict[str, Any]]:
+    """
+    Reads a single file and returns semantic chunks with metadata.
+
+    Strategy:
+      1. Read file content (try multiple encodings).
+      2. For Python / JS / TS files → try AST-based chunking first.
+      3. If AST fails or returns nothing → fall back to language-aware text splitting.
+      4. For all other supported types → plain text splitting directly.
+      5. Any exception at any stage is caught; returns [] rather than crashing.
+    """
+    abs_path = os.path.abspath(os.path.join(base_dir, rel_path))
+    ext = os.path.splitext(rel_path)[1].lower()
+
+    # --- Step 1: Read file ---
+    content = _read_file(abs_path, rel_path)
+    if content is None:
+        return []
+
+    if not content.strip():
+        logger.info(f"[SKIP - empty] {rel_path}")
+        return []
+
+    # --- Step 2: AST parsing for supported languages ---
+    if ext in (".py", ".js", ".jsx", ".ts", ".tsx"):
+        try:
+            ast_chunks = ast_parser.parse_structure(rel_path, content)
+            if ast_chunks:
+                logger.info(f"[AST] {rel_path} → {len(ast_chunks)} chunks")
+                return ast_chunks
+            else:
+                logger.info(f"[AST → 0 chunks] {rel_path}: falling back to text splitter")
+        except Exception as e:
+            logger.warning(f"[AST FAIL] {rel_path}: {e} — falling back to text splitter")
+
+    # --- Step 3/4: Text-based splitting ---
+    lang = EXTENSION_TO_LANGUAGE.get(ext)
+    try:
+        chunks = _plain_text_chunks(content, rel_path, ext, lang)
+    except Exception as e:
+        logger.error(f"[CHUNK FAIL] {rel_path}: {e}")
+        return []
+
+    if not chunks:
+        logger.warning(f"[FALLBACK - 0 chunks] Text splitter produced nothing for {rel_path}")
+    else:
+        logger.info(f"[TEXT SPLIT] {rel_path} → {len(chunks)} chunks (lang={lang})")
+
+    return chunks
+
+
 def parse_codebase(directory: str) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """Traverses a directory, chunks all valid files, and returns chunks and file list."""
-    all_chunks = []
+    """
+    Entry point: traverse a directory, chunk all valid files, return (chunks, file_list).
+    Individual file failures are logged and skipped — they never crash the whole ingest.
+    """
+    all_chunks: List[Dict[str, Any]] = []
     file_list = get_file_list(directory)
-    
+
+    success = 0
+    failed = 0
+
     for rel_path in file_list:
-        file_chunks = chunk_file(directory, rel_path)
-        all_chunks.extend(file_chunks)
-        
+        try:
+            file_chunks = chunk_file(directory, rel_path)
+            if file_chunks:
+                all_chunks.extend(file_chunks)
+                success += 1
+            else:
+                failed += 1
+        except Exception as e:
+            logger.error(f"[PARSE FAIL] Unexpected error on {rel_path}: {e}")
+            failed += 1
+
+    logger.info(
+        f"[PARSE DONE] {directory}: "
+        f"{success} files chunked, {failed} failed, "
+        f"{len(all_chunks)} total chunks"
+    )
     return all_chunks, file_list

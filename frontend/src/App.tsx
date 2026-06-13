@@ -447,45 +447,17 @@ function App() {
     setIsLoading(true);
 
     const assistantMessageId = `assistant_${Date.now()}`;
-    
-    // Default intent is graph_rag. If WebLLM router is ready, evaluate intent.
-    let route: "local_chat" | "graph_rag" = "graph_rag";
-    if (webLlmRouter && routerState === "ready") {
-      try {
-        route = await webLlmRouter.routePrompt(text);
-      } catch (err) {
-        console.warn("Local prompt routing failed, falling back to server RAG:", err);
+
+    // Ensure a session exists
+    let currentSessionId = sessionId;
+    if (!currentSessionId) {
+      const newId = await createNewSession();
+      if (newId) {
+        currentSessionId = newId;
       }
     }
 
-    if (route === "local_chat" && webLlmRouter) {
-      try {
-        let accumulatedText = "";
-        await webLlmRouter.generateInstantChat(text, (token) => {
-          accumulatedText += token;
-        });
-        setMessages(prev => [...prev, {
-          id: assistantMessageId,
-          role: "assistant",
-          content: accumulatedText,
-          sources: [],
-          routing: "local"
-        }]);
-        setIsLoading(false);
-        return;
-      } catch (err) {
-        console.warn("WebLLM local generation failed, falling back to server RAG:", err);
-        setMessages(prev => [...prev, {
-          id: assistantMessageId,
-          role: "assistant",
-          content: "*Local inference crashed mid-way. Please try again.*",
-          sources: [],
-          routing: "server"
-        }]);
-      }
-    }
-
-    // Server-side Graph RAG Pipeline
+    // Server-side Graph RAG Pipeline - always used (WebLLM routing removed)
     try {
       const recentMessages = messages.slice(-10).map(m => ({ role: m.role, content: m.content }));
       
@@ -499,7 +471,7 @@ function App() {
           use_files: false,
           use_search: false,
           use_graph: false,
-          session_id: sessionId,
+          session_id: currentSessionId,
           attached_files: attachedFiles
         }),
       });

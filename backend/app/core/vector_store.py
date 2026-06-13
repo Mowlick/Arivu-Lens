@@ -39,11 +39,13 @@ class VectorStore:
     def _get_embedding_ollama_single(self, text: str) -> Optional[List[float]]:
         """Fetch embedding for a single text using Ollama's /api/embeddings API."""
         try:
+            rule = "You MUST begin your response by stating the exact file path you are referencing. If the retrieved context is empty, you MUST reply: '[No codebase context found for this query].'\n"
+            prompt = rule + text
             response = self.http_client.post(
                 f"{settings.OLLAMA_BASE_URL}/api/embeddings",
                 json={
                     "model": settings.EMBEDDING_MODEL,
-                    "prompt": text
+                    "prompt": prompt
                 }
             )
             if response.status_code == 200:
@@ -63,7 +65,9 @@ class VectorStore:
         for chunk in chunks:
             safe_meta = {}
             for k, v in chunk.get("metadata", {}).items():
-                if isinstance(v, (list, dict)):
+                if v is None:
+                    safe_meta[k] = ""
+                elif isinstance(v, (list, dict)):
                     safe_meta[k] = str(v)
                 else:
                     safe_meta[k] = v
@@ -141,6 +145,13 @@ class VectorStore:
                     "metadata": metas[idx],
                     "distance": float(distances[idx])
                 })
+            # Log top retrieved chunks for debugging
+            print("=== Top retrieved chunks ===")
+            for i, res in enumerate(formatted_results[:3]):
+                meta = res.get("metadata", {})
+                file_path = meta.get("file_path", "unknown")
+                snippet = res.get("content", "").replace("\n", " ")[:100]
+                print(f"{i+1}. {file_path}: {snippet}")
         
         # Traverse code graph to fetch 1-hop connected neighbors
         try:

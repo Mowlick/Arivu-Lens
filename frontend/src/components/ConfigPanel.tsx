@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { FolderOpen, UploadCloud, CheckCircle2, XCircle, Loader2, Database, Trash2 } from "lucide-react";
-
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "../App";
 
 interface ConfigPanelProps {
   onIngestSuccess: (files: string[]) => void;
@@ -60,7 +59,7 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({ onIngestSuccess, onCle
         setUploadProgress(null);
       }
     } catch (err) {
-      alert("Error contacting the backend server. Make sure FastAPI is running on port 8000.");
+      alert("Error contacting the backend server. Make sure the backend sidecar is running.");
       setUploadProgress(null);
     } finally {
       setLoading(false);
