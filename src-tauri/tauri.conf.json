@@ -15,7 +15,8 @@
         "width": 1280,
         "height": 800,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "additionalBrowserArgs": "--enable-unsafe-webgpu --enable-features=WebGPUService"
       }
     ],
     "security": {
