@@ -11,6 +11,8 @@ Compi-Lens is an enterprise-grade, privacy-first **Local Codebase Search & AI en
 
 Compi-Lens includes a state-of-the-art **3D Codebase Architecture Graph** that visualizes repository structure, file hierarchies, and reference dependencies as a live network:
 
+![Compi-Lens Upgraded 3D Codebase Explorer](docs/images/graph_explorer.png)
+
 ### 1. View Modes (Architecture vs. Exploration)
 * **Architecture View**: A high-level view that filters out files and functions, showing only root packages, folders, and external libraries to expose architectural boundaries clearly.
 * **Exploration View**: A granular visualizer showcasing folders, files, classes, methods, and code chunks.
