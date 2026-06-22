@@ -1,17 +1,17 @@
-# Compi-Lens 🔍
+# Arivu-Lens 🔍
 
-Compi-Lens is an enterprise-grade, privacy-first **Local Codebase Search & AI engineering assistant**. It allows you to point the app to a local directory or drag-and-drop a ZIP folder, processes and indexes the files into a local semantic vector database, and lets you chat with an open-source model—**all without a single byte of your code ever leaving your machine**.
+Arivu-Lens is an enterprise-grade, privacy-first **Local Codebase Search & AI engineering assistant**. It allows you to point the app to a local directory or drag-and-drop a ZIP folder, processes and indexes the files into a local semantic vector database, and lets you chat with an open-source model—**all without a single byte of your code ever leaving your machine**.
 
-![Compi-Lens Home Screen](docs/images/empty_state.png)
-![Compi-Lens Active Index Workspace](docs/images/workspace_loaded.png)
+![Arivu-Lens Home Screen](docs/images/empty_state.png)
+![Arivu-Lens Active Index Workspace](docs/images/workspace_loaded.png)
 
 ---
 
 ## 🎨 Upgraded 3D Codebase Architecture Explorer
 
-Compi-Lens includes a state-of-the-art **3D Codebase Architecture Graph** that visualizes repository structure, file hierarchies, and reference dependencies as a live network:
+Arivu-Lens includes a state-of-the-art **3D Codebase Architecture Graph** that visualizes repository structure, file hierarchies, and reference dependencies as a live network:
 
-![Compi-Lens Upgraded 3D Codebase Explorer](docs/images/graph_explorer.png)
+![Arivu-Lens Upgraded 3D Codebase Explorer](docs/images/graph_explorer.png)
 
 ### 1. View Modes (Architecture vs. Exploration)
 * **Architecture View**: A high-level view that filters out files and functions, showing only root packages, folders, and external libraries to expose architectural boundaries clearly.
@@ -50,7 +50,7 @@ Compi-Lens includes a state-of-the-art **3D Codebase Architecture Graph** that v
 
 ## 🚀 Setup Instructions
 
-Follow these steps to run Compi-Lens completely locally.
+Follow these steps to run Arivu-Lens completely locally.
 
 ### Step 1: Install & Set Up Ollama
 
@@ -67,7 +67,7 @@ Follow these steps to run Compi-Lens completely locally.
 
 ### Step 2: Run the Application (Tauri Desktop App)
 
-Compi-Lens is built as a highly optimized desktop application. To start it up for development:
+Arivu-Lens is built as a highly optimized desktop application. To start it up for development:
 
 1. Open a terminal in the root directory of the project.
 2. Install the necessary frontend dependencies:
@@ -106,7 +106,7 @@ Compi-Lens is built as a highly optimized desktop application. To start it up fo
 
 ## 🔒 100% Privacy Guard
 
-Compi-Lens runs entirely within your localhost environment:
+Arivu-Lens runs entirely within your localhost environment:
 * No external API keys required.
 * Zero external network calls are made.
 * Code indexing, chunking, embedding, vector search, and model inference are strictly local.
